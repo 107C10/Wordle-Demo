@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wordle - 猜单词游戏</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <header id="header">
+        <div class="header-left">
+            <button id="help-btn" class="icon-btn" title="游戏规则">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+            </button>
+            <button id="solver-btn" class="icon-btn" title="提示">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 18h6"></path>
+                    <path d="M10 22h4"></path>
+                    <path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"></path>
+                </svg>
+            </button>
+        </div>
+        <div class="header-center">
+            <h1>Wordle</h1>
+        </div>
+        <div class="header-right">
+            <button id="stats-btn" class="icon-btn" title="统计">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="20" x2="18" y2="10"></line>
+                    <line x1="12" y1="20" x2="12" y2="4"></line>
+                    <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+            </button>
+            <button id="restart-btn" class="icon-btn" title="重新开始">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+            </button>
+            <button id="settings-btn" class="icon-btn" title="设置">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- 帮助弹窗 -->
+    <div id="help-modal" class="modal hidden">
+        <div class="modal-content">
+            <button class="modal-close" id="help-close">&times;</button>
+            <h2>游戏规则</h2>
+            <p>在 6 次尝试内猜出一个英文单词。</p>
+            <p>每次猜测后，方块的颜色会改变以提示你有多接近答案。</p>
+            <div class="example">
+                <h3>示例</h3>
+                <div class="example-row">
+                    <div class="tile example-tile correct">W</div>
+                    <div class="tile example-tile">E</div>
+                    <div class="tile example-tile">A</div>
+                    <div class="tile example-tile">R</div>
+                    <div class="tile example-tile">Y</div>
+                </div>
+                <p><strong>W</strong> 在单词中且位置正确（绿色）。</p>
+                <div class="example-row">
+                    <div class="tile example-tile">P</div>
+                    <div class="tile example-tile present">I</div>
+                    <div class="tile example-tile">L</div>
+                    <div class="tile example-tile">L</div>
+                    <div class="tile example-tile">S</div>
+                </div>
+                <p><strong>I</strong> 在单词中但位置不对（黄色）。</p>
+                <div class="example-row">
+                    <div class="tile example-tile">V</div>
+                    <div class="tile example-tile">A</div>
+                    <div class="tile example-tile">G</div>
+                    <div class="tile example-tile absent">U</div>
+                    <div class="tile example-tile">E</div>
+                </div>
+                <p><strong>U</strong> 不在单词中（灰色）。</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-content settings-content">
+            <button class="modal-close" id="settings-close">&times;</button>
+            <h2>设置</h2>
+
+            <!-- Word Length -->
+            <div class="setting-item">
+                <div class="setting-info">
+                    <span class="setting-label">Word Length</span>
+                    <span class="setting-desc">选择单词字母数量</span>
+                </div>
+                <div class="word-length-selector" id="word-length-selector">
+                    <button class="word-length-btn active" data-length="5">5</button>
+                    <button class="word-length-btn" data-length="6">6</button>
+                    <button class="word-length-btn" data-length="7">7</button>
+                </div>
+            </div>
+
+            <!-- Dark Theme -->
+            <div class="setting-item">
+                <div class="setting-info">
+                    <span class="setting-label">Dark Theme</span>
+                    <span class="setting-desc">深色主题</span>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-dark">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <!-- Hard Mode -->
+            <div class="setting-item">
+                <div class="setting-info">
+                    <span class="setting-label">Hard Mode</span>
+                    <span class="setting-desc">Any revealed hints must be used in subsequent guesses</span>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-hard">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <!-- Custom Word -->
+            <div class="setting-item setting-item-col">
+                <div class="setting-info">
+                    <span class="setting-label">Custom Word</span>
+                    <span class="setting-desc">Type in your own word and let your friends guess!</span>
+                </div>
+                <div class="custom-word-row">
+                    <input type="text" id="custom-word-input" class="custom-word-input" maxlength="5" placeholder="Enter a word" autocomplete="off" spellcheck="false">
+                    <button id="custom-word-btn" class="btn-primary">Start</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Solver 面板 -->
+    <div id="solver-panel" class="solver-panel hidden">
+        <div class="solver-header">
+            <span class="solver-title">💡 AI Solver</span>
+            <button class="solver-close" id="solver-close">&times;</button>
+        </div>
+        <div class="solver-body">
+            <div id="solver-status" class="solver-status">正在分析最佳猜测...</div>
+            <div id="solver-progress" class="solver-progress hidden">
+                <div class="solver-progress-bar">
+                    <div id="solver-progress-fill" class="solver-progress-fill"></div>
+                </div>
+                <span id="solver-progress-text" class="solver-progress-text">0%</span>
+            </div>
+            <div id="solver-results" class="solver-results"></div>
+            <div class="solver-info">
+                <small>基于 3Blue1Brown 信息论方法 · 剩余候选: <span id="solver-remaining">?</span> 词</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- 统计弹窗 -->
+    <div id="stats-modal" class="modal hidden">
+        <div class="modal-content stats-content">
+            <button class="modal-close" id="stats-close">&times;</button>
+            <h2>STATISTICS</h2>
+            <div class="stats-summary">
+                <div class="stat-item">
+                    <span class="stat-value" id="stat-played">0</span>
+                    <span class="stat-label">Played</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="stat-win-pct">0</span>
+                    <span class="stat-label">Win %</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="stat-current-streak">0</span>
+                    <span class="stat-label">Current Streak</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="stat-max-streak">0</span>
+                    <span class="stat-label">Max Streak</span>
+                </div>
+            </div>
+            <h3>GUESS DISTRIBUTION</h3>
+            <div class="guess-distribution" id="guess-distribution">
+                <!-- 由 JS 动态生成 -->
+            </div>
+            <button id="stats-clear-btn" class="btn-danger">Clear Statistics</button>
+        </div>
+    </div>
+
+    <!-- 游戏主体 -->
+    <main id="game">
+        <!-- 消息提示 -->
+        <div id="message-container"></div>
+
+        <!-- 猜测网格 6行 x 5列 -->
+        <div id="board-container">
+            <div id="board">
+                <!-- 由 JS 动态生成 -->
+            </div>
+        </div>
+
+        <!-- 虚拟键盘 -->
+        <div id="keyboard">
+            <div class="keyboard-row">
+                <button class="key" data-key="Q">Q</button>
+                <button class="key" data-key="W">W</button>
+                <button class="key" data-key="E">E</button>
+                <button class="key" data-key="R">R</button>
+                <button class="key" data-key="T">T</button>
+                <button class="key" data-key="Y">Y</button>
+                <button class="key" data-key="U">U</button>
+                <button class="key" data-key="I">I</button>
+                <button class="key" data-key="O">O</button>
+                <button class="key" data-key="P">P</button>
+            </div>
+            <div class="keyboard-row">
+                <div class="spacer-half"></div>
+                <button class="key" data-key="A">A</button>
+                <button class="key" data-key="S">S</button>
+                <button class="key" data-key="D">D</button>
+                <button class="key" data-key="F">F</button>
+                <button class="key" data-key="G">G</button>
+                <button class="key" data-key="H">H</button>
+                <button class="key" data-key="J">J</button>
+                <button class="key" data-key="K">K</button>
+                <button class="key" data-key="L">L</button>
+                <div class="spacer-half"></div>
+            </div>
+            <div class="keyboard-row">
+                <button class="key key-wide" data-key="ENTER">Enter</button>
+                <button class="key" data-key="Z">Z</button>
+                <button class="key" data-key="X">X</button>
+                <button class="key" data-key="C">C</button>
+                <button class="key" data-key="V">V</button>
+                <button class="key" data-key="B">B</button>
+                <button class="key" data-key="N">N</button>
+                <button class="key" data-key="M">M</button>
+                <button class="key key-wide" data-key="BACKSPACE">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path>
+                        <line x1="18" y1="9" x2="12" y2="15"></line>
+                        <line x1="12" y1="9" x2="18" y2="15"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/words.js"></script>
+    <script src="js/words6.js"></script>
+    <script src="js/words7.js"></script>
+    <script src="js/solver.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>
