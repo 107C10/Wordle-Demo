@@ -88,6 +88,7 @@ function initGame() {
     bindSettings();
     bindSolver();
     bindStats();
+    bindScreenshot();
 
     // 加载保存的设置
     loadSettings();
@@ -1006,6 +1007,255 @@ function bindStats() {
             clearStats();
         }
     });
+}
+
+// ===========================
+// 截图分享功能
+// ===========================
+
+/**
+ * 截取游戏区域（标题 + 棋盘 + 键盘）并复制到剪贴板
+ * 只截取中间内容区域，不含左右空白，呈竖屏比例
+ */
+function takeScreenshot() {
+    const header = document.getElementById('header');
+    const game = document.getElementById('game');
+
+    // 读取当前主题
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const bgColor = isDark ? '#121213' : '#ffffff';
+    const textColor = isDark ? '#ffffff' : '#000000';
+
+    // 创建临时容器，组合 header + board + keyboard
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `
+        display: inline-block;
+        background: ${bgColor};
+        color: ${textColor};
+        padding: 0 0 24px 0;
+        width: 420px;
+        box-sizing: border-box;
+    `;
+
+    // 克隆完整 header（保留所有按钮）
+    const headerClone = header.cloneNode(true);
+    headerClone.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid ${isDark ? '#3a3a3c' : '#d3d6da'};
+        width: 100%;
+        box-sizing: border-box;
+    `;
+    // 复制 header 内部元素样式
+    copyHeaderStyles(header, headerClone, textColor);
+    wrapper.appendChild(headerClone);
+
+    // 克隆棋盘
+    const boardContainer = document.getElementById('board-container');
+    const boardClone = boardContainer.cloneNode(true);
+    boardClone.style.cssText = 'display: flex; justify-content: center; margin: 16px auto 16px auto;';
+    wrapper.appendChild(boardClone);
+
+    // 克隆键盘
+    const keyboard = document.getElementById('keyboard');
+    const kbClone = keyboard.cloneNode(true);
+    kbClone.style.cssText = 'margin: 0 auto; padding: 0 8px;';
+    wrapper.appendChild(kbClone);
+
+    // 把临时容器挂到 body（不可见位置）
+    wrapper.style.position = 'fixed';
+    wrapper.style.left = '-9999px';
+    wrapper.style.top = '0';
+    document.body.appendChild(wrapper);
+
+    // 确保克隆元素继承样式
+    copyComputedStyles(boardContainer, boardClone);
+    copyComputedStyles(keyboard, kbClone);
+
+    // 使用 html2canvas 渲染
+    html2canvas(wrapper, {
+        backgroundColor: isDark ? '#121213' : '#ffffff',
+        scale: 2,
+        useCORS: true,
+        logging: false
+    }).then(canvas => {
+        // 移除临时容器
+        document.body.removeChild(wrapper);
+
+        // 转换为 Blob 并复制到剪贴板
+        canvas.toBlob(blob => {
+            if (!blob) {
+                showMessage('截图失败', 2000);
+                return;
+            }
+
+            // 尝试复制到剪贴板
+            if (navigator.clipboard && navigator.clipboard.write) {
+                const item = new ClipboardItem({ 'image/png': blob });
+                navigator.clipboard.write([item]).then(() => {
+                    showMessage('截图已复制到剪贴板！', 2000);
+                }).catch(err => {
+                    console.error('剪贴板写入失败:', err);
+                    fallbackDownload(canvas);
+                });
+            } else {
+                // 不支持剪贴板 API，直接下载
+                fallbackDownload(canvas);
+            }
+        }, 'image/png');
+    }).catch(err => {
+        document.body.removeChild(wrapper);
+        console.error('截图失败:', err);
+        showMessage('截图失败', 2000);
+    });
+}
+
+/**
+ * 复制 header 内部元素的计算样式到克隆节点
+ */
+function copyHeaderStyles(source, target, textColor) {
+    // 复制 h1 标题样式
+    const srcH1 = source.querySelector('h1');
+    const tgtH1 = target.querySelector('h1');
+    if (srcH1 && tgtH1) {
+        const cs = window.getComputedStyle(srcH1);
+        tgtH1.style.fontFamily = cs.fontFamily;
+        tgtH1.style.fontSize = cs.fontSize;
+        tgtH1.style.fontWeight = cs.fontWeight;
+        tgtH1.style.letterSpacing = cs.letterSpacing;
+        tgtH1.style.textTransform = cs.textTransform;
+        tgtH1.style.color = textColor;
+        tgtH1.style.margin = '0';
+        tgtH1.style.padding = '0';
+    }
+
+    // 复制各区域的 flex 布局
+    ['header-left', 'header-center', 'header-right'].forEach(cls => {
+        const srcDiv = source.querySelector('.' + cls);
+        const tgtDiv = target.querySelector('.' + cls);
+        if (srcDiv && tgtDiv) {
+            const cs = window.getComputedStyle(srcDiv);
+            tgtDiv.style.display = cs.display;
+            tgtDiv.style.alignItems = cs.alignItems;
+            tgtDiv.style.gap = cs.gap;
+            tgtDiv.style.flex = cs.flex;
+            if (cls === 'header-center') {
+                tgtDiv.style.justifyContent = 'center';
+            }
+        }
+    });
+
+    // 复制按钮样式
+    const srcBtns = source.querySelectorAll('.icon-btn');
+    const tgtBtns = target.querySelectorAll('.icon-btn');
+    srcBtns.forEach((sb, i) => {
+        if (tgtBtns[i]) {
+            const cs = window.getComputedStyle(sb);
+            tgtBtns[i].style.background = 'none';
+            tgtBtns[i].style.border = 'none';
+            tgtBtns[i].style.color = textColor;
+            tgtBtns[i].style.cursor = 'default';
+            tgtBtns[i].style.padding = cs.padding;
+            tgtBtns[i].style.width = cs.width;
+            tgtBtns[i].style.height = cs.height;
+            tgtBtns[i].style.display = 'flex';
+            tgtBtns[i].style.alignItems = 'center';
+            tgtBtns[i].style.justifyContent = 'center';
+        }
+    });
+
+    // SVG 继承颜色
+    target.querySelectorAll('svg').forEach(svg => {
+        svg.style.stroke = textColor;
+    });
+}
+
+/**
+ * 递归复制关键计算样式到克隆节点
+ */
+function copyComputedStyles(source, target) {
+    // 复制所有 tile 的背景色和文字颜色
+    const sourceTiles = source.querySelectorAll('.tile');
+    const targetTiles = target.querySelectorAll('.tile');
+    sourceTiles.forEach((st, i) => {
+        if (targetTiles[i]) {
+            const cs = window.getComputedStyle(st);
+            targetTiles[i].style.backgroundColor = cs.backgroundColor;
+            targetTiles[i].style.color = cs.color;
+            targetTiles[i].style.borderColor = cs.borderColor;
+            targetTiles[i].style.width = cs.width;
+            targetTiles[i].style.height = cs.height;
+            targetTiles[i].style.fontSize = cs.fontSize;
+            targetTiles[i].style.fontWeight = cs.fontWeight;
+            targetTiles[i].style.display = 'flex';
+            targetTiles[i].style.alignItems = 'center';
+            targetTiles[i].style.justifyContent = 'center';
+            targetTiles[i].style.border = `2px solid ${cs.borderColor}`;
+            targetTiles[i].style.boxSizing = 'border-box';
+            targetTiles[i].style.textTransform = 'uppercase';
+            targetTiles[i].style.fontFamily = 'Arial, sans-serif';
+        }
+    });
+
+    // 复制键盘按键样式
+    const sourceKeys = source.querySelectorAll('.key');
+    const targetKeys = target.querySelectorAll('.key');
+    sourceKeys.forEach((sk, i) => {
+        if (targetKeys[i]) {
+            const cs = window.getComputedStyle(sk);
+            targetKeys[i].style.backgroundColor = cs.backgroundColor;
+            targetKeys[i].style.color = cs.color;
+            targetKeys[i].style.borderRadius = cs.borderRadius;
+            targetKeys[i].style.fontSize = cs.fontSize;
+            targetKeys[i].style.fontWeight = cs.fontWeight;
+            targetKeys[i].style.padding = cs.padding;
+            targetKeys[i].style.minWidth = cs.minWidth;
+            targetKeys[i].style.height = cs.height;
+            targetKeys[i].style.border = 'none';
+            targetKeys[i].style.fontFamily = 'Arial, sans-serif';
+            targetKeys[i].style.cursor = 'default';
+        }
+    });
+
+    // 复制 row 样式
+    const sourceRows = source.querySelectorAll('.row, .keyboard-row');
+    const targetRows = target.querySelectorAll('.row, .keyboard-row');
+    sourceRows.forEach((sr, i) => {
+        if (targetRows[i]) {
+            const cs = window.getComputedStyle(sr);
+            targetRows[i].style.display = cs.display;
+            targetRows[i].style.gap = cs.gap;
+            targetRows[i].style.gridTemplateColumns = cs.gridTemplateColumns;
+            targetRows[i].style.justifyContent = cs.justifyContent || 'center';
+            targetRows[i].style.marginBottom = cs.marginBottom || '4px';
+        }
+    });
+}
+
+/**
+ * 降级方案：下载截图为 PNG 文件
+ */
+function fallbackDownload(canvas) {
+    const link = document.createElement('a');
+    link.download = `wordle-${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    showMessage('截图已下载！', 2000);
+}
+
+/**
+ * 绑定截图按钮
+ */
+function bindScreenshot() {
+    const screenshotBtn = document.getElementById('screenshot-btn');
+    if (screenshotBtn) {
+        screenshotBtn.addEventListener('click', () => {
+            screenshotBtn.blur();
+            takeScreenshot();
+        });
+    }
 }
 
 // ===========================
