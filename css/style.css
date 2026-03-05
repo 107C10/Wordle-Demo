@@ -954,3 +954,209 @@ body {
         gap: 4px;
     }
 }
+
+/* ===========================
+   多人游戏 - 房间弹窗
+   =========================== */
+.room-content {
+    max-width: 380px;
+}
+
+.room-field {
+    margin-bottom: 16px;
+}
+
+.room-label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.room-input {
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    border: 2px solid var(--color-tile-border-filled);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 1rem;
+    background: transparent;
+    color: var(--color-text);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.room-input:focus {
+    border-color: var(--color-correct);
+}
+
+.room-input::placeholder {
+    font-weight: 400;
+    font-size: 0.85rem;
+    color: var(--color-absent);
+}
+
+.room-code-field {
+    text-transform: uppercase;
+    letter-spacing: 0.25em;
+    font-weight: 700;
+}
+
+.room-section h3 {
+    font-size: 0.95rem;
+    margin-bottom: 10px;
+}
+
+.room-create-row,
+.room-join-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.room-join-row .room-input {
+    flex: 1;
+}
+
+.room-divider {
+    height: 1px;
+    background: var(--color-header-border);
+    margin: 18px 0;
+}
+
+/* ===========================
+   多人游戏 - 房间信息栏
+   =========================== */
+.room-info {
+    width: 100%;
+    max-width: 500px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 6px 16px;
+    background: var(--color-correct);
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.room-info.hidden {
+    display: none;
+}
+
+.room-code-tag {
+    letter-spacing: 0.1em;
+}
+
+.room-player-count {
+    opacity: 0.85;
+}
+
+.btn-room-leave {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.4);
+    color: #ffffff;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-room-leave:hover {
+    background: rgba(255,255,255,0.35);
+}
+
+/* ===========================
+   多人游戏 - 对手面板
+   =========================== */
+.opponents-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    padding: 6px 8px;
+    width: 100%;
+    max-width: 500px;
+}
+
+.opponents-container.hidden {
+    display: none;
+}
+
+.opponent-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 4px;
+    border: 1px solid var(--color-header-border);
+    border-radius: 6px;
+    background: var(--color-bg);
+    min-width: 60px;
+}
+
+.opponent-nickname {
+    font-size: 0.65rem;
+    font-weight: 700;
+    max-width: 70px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.opponent-board {
+    display: grid;
+    grid-template-rows: repeat(6, 1fr);
+    gap: 1px;
+}
+
+.opponent-row {
+    display: grid;
+    gap: 1px;
+}
+
+.opponent-tile {
+    width: 10px;
+    height: 10px;
+    border: 1px solid var(--color-tile-border);
+    border-radius: 1px;
+}
+
+.opponent-tile[data-state="correct"] {
+    background-color: var(--color-correct);
+    border-color: var(--color-correct);
+}
+
+.opponent-tile[data-state="present"] {
+    background-color: var(--color-present);
+    border-color: var(--color-present);
+}
+
+.opponent-tile[data-state="absent"] {
+    background-color: var(--color-absent);
+    border-color: var(--color-absent);
+}
+
+.opponent-tile[data-state="tbd"] {
+    border-color: var(--color-tile-border-filled);
+}
+
+.opponent-status {
+    font-size: 0.6rem;
+    color: var(--color-absent);
+}
+
+.opponent-status.won {
+    color: var(--color-correct);
+    font-weight: 700;
+}
+
+.opponent-status.lost {
+    color: #e74c3c;
+    font-weight: 700;
+}

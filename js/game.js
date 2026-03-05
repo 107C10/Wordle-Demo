@@ -20,6 +20,7 @@ let boardState = [];         // 存储棋盘上每个格子的字母
 let revealedHints = [];      // Hard Mode: 已揭示的提示 [{letter, index, state}]
 let hardMode = false;        // Hard Mode 开关
 let isCustomWord = false;    // 当前是否为自定义单词模式
+let isMultiplayer = false;   // 多人模式标志
 
 // ===========================
 // DOM 元素引用
@@ -240,6 +241,11 @@ function handleLetter(letter) {
     tile.setAttribute('data-state', 'tbd');
     boardState[currentRow][currentCol] = letter;
     currentCol++;
+
+    // 多人模式：广播候选框
+    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
+        Multiplayer.broadcastBox();
+    }
 }
 
 /** 删除最后一个字母 */
@@ -252,6 +258,11 @@ function handleBackspace() {
     tile.textContent = '';
     tile.removeAttribute('data-state');
     boardState[currentRow][currentCol] = '';
+
+    // 多人模式：广播候选框
+    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
+        Multiplayer.broadcastBox();
+    }
 }
 
 /** 提交猜测 */
@@ -284,8 +295,25 @@ function handleEnter() {
         }
     }
 
-    // 评估并翻转
+    // ★ 多人模式：发送到服务器，由服务器评估
+    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
+        Multiplayer.submitGuess(guess);
+        return;
+    }
+
+    // 单人模式：本地评估
     const evaluation = evaluateGuess(guess);
+    applyGuessResult(guess, evaluation);
+}
+
+/**
+ * 应用猜测结果（单人 / 多人共用）
+ * @param {string} guess
+ * @param {string[]} evaluation
+ * @param {boolean} [mpWon]     多人模式由服务器判定
+ * @param {string}  [mpAnswer]  多人模式由服务器提供答案（失败时）
+ */
+function applyGuessResult(guess, evaluation, mpWon, mpAnswer) {
     isRevealing = true;
     revealRow(currentRow, evaluation);
 
@@ -293,20 +321,24 @@ function handleEnter() {
     recordHints(guess, evaluation);
 
     // 更新 Solver 的剩余可能答案
-    updateSolverAfterGuess(guess, evaluation);
+    if (!isMultiplayer) {
+        updateSolverAfterGuess(guess, evaluation);
+    }
 
     const revealDuration = wordLength * 300 + 250;
 
-    // 检查是否胜利
-    if (guess === targetWord) {
+    // 判断是否胜利
+    const won = isMultiplayer ? !!mpWon : (guess === targetWord);
+    const answer = isMultiplayer ? (mpAnswer || '') : targetWord;
+
+    if (won) {
         setTimeout(() => {
             isRevealing = false;
             const messages = ['天才！', '太棒了！', '出色！', '不错！', '还行！', '好险！'];
             showMessage(messages[currentRow] || '你赢了！', 3000);
             bounceRow(currentRow);
             gameOver = true;
-            // 记录统计（非自定义模式才计入）
-            if (!isCustomWord) {
+            if (!isCustomWord && !isMultiplayer) {
                 recordGameResult(true, currentRow + 1);
                 setTimeout(() => showStats(currentRow), 2000);
             }
@@ -314,18 +346,15 @@ function handleEnter() {
         return;
     }
 
-    // 进入下一行
     currentRow++;
     currentCol = 0;
 
-    // 检查是否用完所有机会
     if (currentRow >= MAX_GUESSES) {
         setTimeout(() => {
             isRevealing = false;
-            showMessage(`答案: ${targetWord}`, 5000);
+            showMessage(`答案: ${answer}`, 5000);
             gameOver = true;
-            // 记录统计（非自定义模式才计入）
-            if (!isCustomWord) {
+            if (!isCustomWord && !isMultiplayer) {
                 recordGameResult(false, 0);
                 setTimeout(() => showStats(), 2500);
             }

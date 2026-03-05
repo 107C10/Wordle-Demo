@@ -6,6 +6,7 @@
     <title>Wordle - 猜单词游戏</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
 </head>
 <body>
     <!-- 顶部导航栏 -->
@@ -36,6 +37,14 @@
             <h1>Wordle</h1>
         </div>
         <div class="header-right">
+            <button id="multiplayer-btn" class="icon-btn" title="多人游戏">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+            </button>
             <button id="stats-btn" class="icon-btn" title="统计">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="20" x2="18" y2="10"></line>
@@ -204,10 +213,57 @@
         </div>
     </div>
 
+    <!-- 房间弹窗（多人游戏） -->
+    <div id="room-modal" class="modal hidden">
+        <div class="modal-content room-content">
+            <button class="modal-close" id="room-close">&times;</button>
+            <h2>多人游戏</h2>
+
+            <div class="room-field">
+                <label class="room-label">昵称</label>
+                <input type="text" id="room-nickname" class="room-input" maxlength="20" placeholder="输入你的昵称" autocomplete="off">
+            </div>
+
+            <div class="room-section">
+                <h3>创建房间</h3>
+                <div class="room-create-row">
+                    <div class="word-length-selector" id="room-word-length">
+                        <button class="word-length-btn active" data-length="5">5</button>
+                        <button class="word-length-btn" data-length="6">6</button>
+                        <button class="word-length-btn" data-length="7">7</button>
+                    </div>
+                    <button id="room-create-btn" class="btn-primary">创建房间</button>
+                </div>
+            </div>
+
+            <div class="room-divider"></div>
+
+            <div class="room-section">
+                <h3>加入房间</h3>
+                <div class="room-join-row">
+                    <input type="text" id="room-code-input" class="room-input room-code-field" maxlength="6" placeholder="房间码" autocomplete="off">
+                    <button id="room-join-btn" class="btn-primary">加入</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 房间信息栏（在房间中时显示） -->
+    <div id="room-info" class="room-info hidden">
+        <span class="room-code-tag">房间 <strong id="room-code-display"></strong></span>
+        <span class="room-player-count" id="room-player-count">1/8</span>
+        <button id="room-leave-btn" class="btn-room-leave">退出</button>
+    </div>
+
     <!-- 游戏主体 -->
     <main id="game">
         <!-- 消息提示 -->
         <div id="message-container"></div>
+
+        <!-- 对手面板（多人游戏时显示） -->
+        <div id="opponents-container" class="opponents-container hidden">
+            <!-- 由 multiplayer.js 动态生成 -->
+        </div>
 
         <!-- 猜测网格 6行 x 5列 -->
         <div id="board-container">
@@ -269,5 +325,6 @@
     <script src="js/judge.js"></script>
     <script src="js/solver.js"></script>
     <script src="js/game.js"></script>
+    <script src="js/multiplayer.js"></script>
 </body>
 </html>
