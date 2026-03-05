@@ -132,6 +132,30 @@ io.on('connection', (socket) => {
         handleLeaveRoom(socket, roomId);
     });
 
+    // ── 实时候选框广播 ──
+    socket.on('update-box', ({ roomId, row, candidateRow }) => {
+        if (!checkRateLimit(socket.id)) return;
+        if (!roomId || typeof roomId !== 'string') return;
+        if (!Array.isArray(candidateRow)) return;
+        // 消息长度限制：candidateRow 最多 7 个字符
+        if (candidateRow.length > 7) return;
+
+        const room = RoomManager.getRoom(roomId);
+        if (!room || !room.players.has(socket.id)) return;
+
+        // 更新玩家状态
+        const player = room.players.get(socket.id);
+        player.currentRow = row;
+        player.candidateRow = candidateRow;
+
+        // 广播给房间其他人
+        socket.to(roomId).emit('box-updated', {
+            socketId: socket.id,
+            row,
+            candidateRow
+        });
+    });
+
     // ── 断开连接 ──
     socket.on('disconnect', () => {
         const roomId = RoomManager.findRoomBySocket(socket.id);
