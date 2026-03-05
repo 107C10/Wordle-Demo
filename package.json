@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Multiplayer Wordle with real-time room support",
   "main": "server/index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js"
