@@ -228,11 +228,63 @@ io.on('connection', (socket) => {
         console.log(`[猜测] ${player.nickname} 在房间 ${roomId} 猜 ${guess} → ${won ? '✓' : (isGameOver ? '✗' : '...')}`);
     });
 
+    // ── 重连房间 ──
+    socket.on('rejoin-room', ({ roomId, nickname }) => {
+        if (!checkRateLimit(socket.id)) return;
+        if (!roomId || typeof roomId !== 'string') return;
+        if (!nickname || typeof nickname !== 'string') return;
+        nickname = nickname.slice(0, 20);
+        roomId = roomId.toUpperCase().slice(0, 6);
+
+        const result = RoomManager.rejoinRoom(roomId, socket.id, nickname);
+        if (!result.ok) {
+            // 重连失败，尝试普通加入
+            socket.emit('rejoin-failed', { message: result.error, roomId });
+            return;
+        }
+
+        socket.join(roomId);
+
+        // 发送完整房间状态
+        const state = RoomManager.serializeRoom(result.room);
+        // 附加自己的历史（用于恢复棋盘）
+        const myHistory = result.room.history.get(socket.id) || [];
+        socket.emit('room-rejoined', {
+            roomId,
+            state,
+            myHistory
+        });
+
+        // 通知其他玩家
+        socket.to(roomId).emit('player-reconnected', {
+            socketId: socket.id,
+            oldSocketId: result.oldSocketId,
+            nickname
+        });
+
+        console.log(`[重连] ${nickname} 重连到房间 ${roomId}`);
+    });
+
     // ── 断开连接 ──
     socket.on('disconnect', () => {
         const roomId = RoomManager.findRoomBySocket(socket.id);
         if (roomId) {
-            handleLeaveRoom(socket, roomId, true);
+            // 标记为断线而非立即移除
+            const dcResult = RoomManager.disconnectPlayer(roomId, socket.id, (rid, sid, nick) => {
+                // 超时回调：通知房间玩家已永久离开
+                io.to(rid).emit('player-left', {
+                    socketId: sid,
+                    nickname: nick
+                });
+                console.log(`[超时] ${nick} 在房间 ${rid} 断线超时，已移除`);
+            });
+
+            if (dcResult.ok) {
+                socket.to(roomId).emit('player-disconnected', {
+                    socketId: socket.id,
+                    nickname: dcResult.nickname
+                });
+            }
         }
         rateLimits.delete(socket.id);
         console.log(`[断开] ${socket.id}`);

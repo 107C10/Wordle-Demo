@@ -107,26 +107,51 @@ const Multiplayer = (function () {
     function ensureConnected() {
         if (socket && socket.connected) return;
 
-        socket = io();
+        socket = io({
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000
+        });
 
         socket.on('connect', () => {
             console.log('[MP] 已连接:', socket.id);
+            // 如果之前在房间中，尝试重连
+            if (currentRoomId && myNickname) {
+                console.log('[MP] 尝试重连房间:', currentRoomId);
+                socket.emit('rejoin-room', {
+                    roomId: currentRoomId,
+                    nickname: myNickname
+                });
+            }
         });
 
         socket.on('disconnect', () => {
             console.log('[MP] 连接断开');
-            showMessage('与服务器断开连接', 3000);
+            if (currentRoomId) {
+                showMessage('连接断开，正在重连...', 3000);
+            }
+        });
+
+        socket.on('reconnect_failed', () => {
+            if (currentRoomId) {
+                showMessage('重连失败，已退出房间', 3000);
+                resetToSinglePlayer();
+            }
         });
 
         // ── 房间事件 ──
         socket.on('room-created', onRoomCreated);
         socket.on('room-joined', onRoomJoined);
+        socket.on('room-rejoined', onRoomRejoined);
+        socket.on('rejoin-failed', onRejoinFailed);
         socket.on('room-error', onRoomError);
         socket.on('player-joined', onPlayerJoined);
         socket.on('player-left', onPlayerLeft);
-        socket.on('player-disconnected', onPlayerLeft);
+        socket.on('player-disconnected', onPlayerDisconnected);
+        socket.on('player-reconnected', onPlayerReconnected);
 
-        // ── 游戏事件（Step 4-5 将添加更多） ──
+        // ── 游戏事件 ──
         socket.on('box-updated', onBoxUpdated);
         socket.on('guess-result', onGuessResult);
         socket.on('player-guess', onPlayerGuess);
@@ -158,6 +183,117 @@ const Multiplayer = (function () {
         showMessage(`${nickname} 离开了房间`, 2000);
         removeOpponent(socketId);
         updatePlayerCount();
+    }
+
+    function onPlayerDisconnected({ socketId, nickname }) {
+        showMessage(`${nickname} 断线了`, 2000);
+        const opp = opponents[socketId];
+        if (opp) {
+            opp.statusEl.textContent = '断线';
+            opp.statusEl.style.color = 'orange';
+        }
+    }
+
+    function onPlayerReconnected({ socketId, oldSocketId, nickname }) {
+        showMessage(`${nickname} 重连了`, 2000);
+        // 将旧 socketId 的对手数据迁移到新 socketId
+        if (oldSocketId && opponents[oldSocketId]) {
+            const opp = opponents[oldSocketId];
+            opp.card.id = 'opp-' + socketId;
+            opp.statusEl.textContent = '进行中';
+            opp.statusEl.style.color = '';
+            opp.statusEl.classList.remove('won', 'lost');
+            opponents[socketId] = opp;
+            delete opponents[oldSocketId];
+        }
+    }
+
+    function onRoomRejoined({ roomId, state, myHistory }) {
+        showMessage('已重连到房间', 2000);
+
+        // 重建房间状态
+        currentRoomId = roomId;
+        roomWordLength = state.wordLength;
+        isMultiplayer = true;
+
+        // 切换字母长度
+        if (wordLength !== roomWordLength) {
+            changeWordLength(roomWordLength);
+        } else {
+            // 重置棋盘但不获取新答案（多人模式无本地答案）
+            resetGameState();
+            createBoard();
+            resetKeyboard();
+        }
+        targetWord = '';
+
+        // 恢复自己的棋盘
+        if (myHistory && myHistory.length > 0) {
+            for (let r = 0; r < myHistory.length; r++) {
+                const { guess, evaluation } = myHistory[r];
+                for (let c = 0; c < roomWordLength; c++) {
+                    const tile = getTile(r, c);
+                    tile.textContent = guess[c];
+                    tile.setAttribute('data-state', evaluation[c]);
+                    boardState[r][c] = guess[c];
+                }
+                // 更新键盘颜色
+                updateKeyboard(guess, evaluation);
+            }
+            currentRow = myHistory.length;
+            currentCol = 0;
+
+            // 检查游戏是否已结束
+            const lastEval = myHistory[myHistory.length - 1].evaluation;
+            if (lastEval.every(e => e === 'correct')) {
+                gameOver = true;
+            } else if (myHistory.length >= 6) {
+                gameOver = true;
+            }
+        }
+
+        // 显示房间 UI
+        roomCodeDisplay.textContent = roomId;
+        roomInfo.classList.remove('hidden');
+        opponentsContainer.classList.remove('hidden');
+        opponentsContainer.innerHTML = '';
+        opponents = {};
+
+        // 重建对手面板
+        for (const [sid, player] of Object.entries(state.players)) {
+            if (sid !== socket.id) {
+                addOpponent(sid, player.nickname);
+                if (state.history && state.history[sid]) {
+                    state.history[sid].forEach(({ guess, evaluation }) => {
+                        applyOpponentGuess(sid, guess, evaluation);
+                    });
+                }
+                if (player.gameOver) {
+                    const opp = opponents[sid];
+                    if (opp) {
+                        opp.statusEl.textContent = player.won ? '✓ 猜对了' : '✗ 失败';
+                        opp.statusEl.classList.add(player.won ? 'won' : 'lost');
+                    }
+                }
+            }
+        }
+        updatePlayerCount();
+    }
+
+    function onRejoinFailed({ message }) {
+        showMessage(message || '重连失败', 3000);
+        resetToSinglePlayer();
+    }
+
+    function resetToSinglePlayer() {
+        currentRoomId = null;
+        isMultiplayer = false;
+        roomInfo.classList.add('hidden');
+        opponentsContainer.classList.add('hidden');
+        opponentsContainer.innerHTML = '';
+        opponents = {};
+        restartGame();
+    }
     }
 
     // ─── 进入 / 离开房间 ──────────────────────────

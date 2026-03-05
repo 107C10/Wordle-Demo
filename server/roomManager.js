@@ -27,6 +27,8 @@ const crypto = require('crypto');
 
 // ─── 内存存储 ─────────────────────────────────────
 const rooms = new Map();
+const disconnectedPlayers = new Map(); // socketId -> { roomId, nickname, timer }
+const DISCONNECT_TIMEOUT = 60000;      // 60 秒断线保护
 
 // ─── 工具函数 ─────────────────────────────────────
 
@@ -239,6 +241,100 @@ function listRooms() {
     return result;
 }
 
+/**
+ * 标记玩家为断线状态（不立即移除，等待重连）
+ * @param {string} roomId
+ * @param {string} socketId
+ * @param {function} onTimeout - 超时后的回调
+ * @returns {{ ok: boolean, nickname?: string }}
+ */
+function disconnectPlayer(roomId, socketId, onTimeout) {
+    const room = rooms.get(roomId);
+    if (!room) return { ok: false };
+
+    const player = room.players.get(socketId);
+    if (!player) return { ok: false };
+
+    const nickname = player.nickname;
+
+    // 标记为断线
+    player.disconnected = true;
+
+    // 设置超时清理
+    const timer = setTimeout(() => {
+        disconnectedPlayers.delete(socketId);
+        // 超时：正式移除
+        const r = rooms.get(roomId);
+        if (r && r.players.has(socketId)) {
+            r.players.delete(socketId);
+            r.history.delete(socketId);
+            if (r.players.size === 0) {
+                rooms.delete(roomId);
+            } else if (r.hostId === socketId) {
+                // 转移房主到第一个非断线玩家
+                for (const [sid, p] of r.players) {
+                    if (!p.disconnected) {
+                        r.hostId = sid;
+                        break;
+                    }
+                }
+            }
+        }
+        if (onTimeout) onTimeout(roomId, socketId, nickname);
+    }, DISCONNECT_TIMEOUT);
+
+    disconnectedPlayers.set(socketId, { roomId, nickname, timer });
+    return { ok: true, nickname };
+}
+
+/**
+ * 尝试重连到房间
+ * @param {string} roomId
+ * @param {string} newSocketId  新的 socket.id
+ * @param {string} nickname     昵称（用于匹配）
+ * @returns {{ ok: boolean, room?: object, oldSocketId?: string, error?: string }}
+ */
+function rejoinRoom(roomId, newSocketId, nickname) {
+    const room = rooms.get(roomId);
+    if (!room) return { ok: false, error: '房间不存在' };
+
+    // 查找断线的同名玩家
+    let oldSocketId = null;
+    for (const [sid, player] of room.players) {
+        if (player.nickname === nickname && player.disconnected) {
+            oldSocketId = sid;
+            break;
+        }
+    }
+
+    if (!oldSocketId) {
+        return { ok: false, error: '未找到断线的玩家，请重新加入' };
+    }
+
+    // 取消超时定时器
+    const dcInfo = disconnectedPlayers.get(oldSocketId);
+    if (dcInfo) {
+        clearTimeout(dcInfo.timer);
+        disconnectedPlayers.delete(oldSocketId);
+    }
+
+    // 迁移数据到新 socketId
+    const playerData = room.players.get(oldSocketId);
+    playerData.disconnected = false;
+    room.players.delete(oldSocketId);
+    room.players.set(newSocketId, playerData);
+
+    const histData = room.history.get(oldSocketId);
+    room.history.delete(oldSocketId);
+    room.history.set(newSocketId, histData || []);
+
+    if (room.hostId === oldSocketId) {
+        room.hostId = newSocketId;
+    }
+
+    return { ok: true, room, oldSocketId };
+}
+
 module.exports = {
     createRoom,
     joinRoom,
@@ -247,5 +343,7 @@ module.exports = {
     findRoomBySocket,
     recordGuess,
     serializeRoom,
-    listRooms
+    listRooms,
+    disconnectPlayer,
+    rejoinRoom
 };
