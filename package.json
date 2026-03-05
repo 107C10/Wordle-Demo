@@ -1,0 +1,14 @@
+{
+  "name": "wordle-multiplayer",
+  "version": "1.0.0",
+  "description": "Multiplayer Wordle with real-time room support",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4"
+  }
+}

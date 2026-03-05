@@ -385,37 +385,10 @@ function isValidWord(word) {
 }
 
 // ===========================
-// 猜测评估（核心算法）
+// 猜测评估（委托给共享 Judge 模块）
 // ===========================
 function evaluateGuess(guess) {
-    const result = Array(wordLength).fill('absent');
-    const targetLetters = targetWord.split('');
-    const guessLetters = guess.split('');
-    const used = Array(wordLength).fill(false);
-
-    // 第一遍：标记正确位置
-    for (let i = 0; i < wordLength; i++) {
-        if (guessLetters[i] === targetLetters[i]) {
-            result[i] = 'correct';
-            used[i] = true;
-            guessLetters[i] = null;
-        }
-    }
-
-    // 第二遍：标记存在但位置不对
-    for (let i = 0; i < wordLength; i++) {
-        if (guessLetters[i] === null) continue;
-
-        for (let j = 0; j < wordLength; j++) {
-            if (!used[j] && guessLetters[i] === targetLetters[j]) {
-                result[i] = 'present';
-                used[j] = true;
-                break;
-            }
-        }
-    }
-
-    return result;
+    return Judge.evaluateGuess(guess, targetWord);
 }
 
 // ===========================
