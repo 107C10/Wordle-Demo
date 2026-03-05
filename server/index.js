@@ -334,6 +334,7 @@ function handleLeaveRoom(socket, roomId, isDisconnect = false) {
             newHostId: result.newHostId
         });
     }
+    persistRoom(roomId);
     console.log(`[房间] ${nickname} ${isDisconnect ? '断线离开' : '离开'}房间 ${roomId}`);
 }
 

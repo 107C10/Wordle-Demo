@@ -294,7 +294,6 @@ const Multiplayer = (function () {
         opponents = {};
         restartGame();
     }
-    }
 
     // ─── 进入 / 离开房间 ──────────────────────────
 
