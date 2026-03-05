@@ -156,6 +156,78 @@ io.on('connection', (socket) => {
         });
     });
 
+    // ── 提交猜测 ──
+    socket.on('submit-guess', ({ roomId, guess }) => {
+        if (!checkRateLimit(socket.id)) return;
+        if (!roomId || typeof roomId !== 'string') return;
+        if (!guess || typeof guess !== 'string') return;
+
+        const room = RoomManager.getRoom(roomId);
+        if (!room) {
+            socket.emit('room-error', { message: '房间不存在' });
+            return;
+        }
+
+        const player = room.players.get(socket.id);
+        if (!player) {
+            socket.emit('room-error', { message: '你不在此房间' });
+            return;
+        }
+        if (player.gameOver) {
+            socket.emit('room-error', { message: '你的游戏已结束' });
+            return;
+        }
+
+        // 消息长度限制
+        guess = guess.toUpperCase().slice(0, room.wordLength);
+        if (guess.length !== room.wordLength) {
+            socket.emit('room-error', { message: '单词长度不正确' });
+            return;
+        }
+
+        // 验证是否为合法单词
+        const ws = getWordSet(room.wordLength);
+        if (!ws || !ws.validGuesses.has(guess.toLowerCase())) {
+            socket.emit('room-error', { message: '不在单词列表中' });
+            return;
+        }
+
+        // 使用 Judge 评估
+        const evaluation = Judge.evaluateGuess(guess, room.answer);
+
+        // 记录猜测
+        const recordResult = RoomManager.recordGuess(roomId, socket.id, guess, evaluation);
+        if (!recordResult.ok) {
+            socket.emit('room-error', { message: recordResult.error });
+            return;
+        }
+
+        // 判断结果
+        const won = evaluation.every(e => e === 'correct');
+        const hist = room.history.get(socket.id);
+        const isGameOver = won || hist.length >= 6;
+
+        // 发送结果给提交者
+        socket.emit('guess-result', {
+            evaluation,
+            won,
+            gameOver: isGameOver,
+            answer: isGameOver && !won ? room.answer : undefined
+        });
+
+        // 广播给房间其他人
+        socket.to(roomId).emit('player-guess', {
+            socketId: socket.id,
+            guess,
+            evaluation,
+            row: hist.length - 1,
+            won,
+            gameOver: isGameOver
+        });
+
+        console.log(`[猜测] ${player.nickname} 在房间 ${roomId} 猜 ${guess} → ${won ? '✓' : (isGameOver ? '✗' : '...')}`);
+    });
+
     // ── 断开连接 ──
     socket.on('disconnect', () => {
         const roomId = RoomManager.findRoomBySocket(socket.id);
