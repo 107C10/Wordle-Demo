@@ -12,6 +12,23 @@ const fs      = require('fs');
 
 const Judge       = require('../js/judge');
 const RoomManager = require('./roomManager');
+const { createRedisStore } = require('./redisStore');
+
+// ─── 可选 Redis 持久化 ───────────────────────────
+const redisStore = createRedisStore();
+
+/** 保存房间到 Redis（如果可用） */
+async function persistRoom(roomId) {
+    if (!redisStore) return;
+    const room = RoomManager.getRoom(roomId);
+    if (room) {
+        try { await redisStore.saveRoom(room); } catch (e) {
+            console.error('[Redis] 保存失败:', e.message);
+        }
+    } else {
+        try { await redisStore.deleteRoom(roomId); } catch (e) {}
+    }
+}
 
 // ─── 加载词库（在沙箱中执行浏览器端 JS）──────────
 const sandbox = { WORD_DATA: {} };
@@ -95,6 +112,7 @@ io.on('connection', (socket) => {
             roomId: result.room.id,
             state:  RoomManager.serializeRoom(result.room)
         });
+        persistRoom(result.room.id);
         console.log(`[房间] ${nickname} 创建房间 ${result.room.id} (${wordLength}字母)`);
     });
 
@@ -123,6 +141,7 @@ io.on('connection', (socket) => {
             socketId: socket.id,
             nickname
         });
+        persistRoom(roomId);
         console.log(`[房间] ${nickname} 加入房间 ${roomId}`);
     });
 
@@ -225,6 +244,7 @@ io.on('connection', (socket) => {
             gameOver: isGameOver
         });
 
+        persistRoom(roomId);
         console.log(`[猜测] ${player.nickname} 在房间 ${roomId} 猜 ${guess} → ${won ? '✓' : (isGameOver ? '✗' : '...')}`);
     });
 
@@ -262,6 +282,7 @@ io.on('connection', (socket) => {
             nickname
         });
 
+        persistRoom(roomId);
         console.log(`[重连] ${nickname} 重连到房间 ${roomId}`);
     });
 
@@ -284,6 +305,7 @@ io.on('connection', (socket) => {
                     socketId: socket.id,
                     nickname: dcResult.nickname
                 });
+                persistRoom(roomId);
             }
         }
         rateLimits.delete(socket.id);
