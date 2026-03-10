@@ -34,7 +34,11 @@ async function persistRoom(roomId) {
 const sandbox = { WORD_DATA: {} };
 vm.createContext(sandbox);
 const jsDir = path.join(__dirname, '..', 'js');
-vm.runInContext(fs.readFileSync(path.join(jsDir, 'words.js'),  'utf8'), sandbox);
+// words.js 中 'const WORD_DATA = {};' 会在 VM 脚本作用域创建局部变量，
+// 导致 sandbox.WORD_DATA 始终为空。需要去掉这行，让它使用 sandbox 的全局 WORD_DATA。
+const wordsCode = fs.readFileSync(path.join(jsDir, 'words.js'), 'utf8')
+    .replace(/^const WORD_DATA\s*=\s*\{\};?/m, '');
+vm.runInContext(wordsCode, sandbox);
 vm.runInContext(fs.readFileSync(path.join(jsDir, 'words6.js'), 'utf8'), sandbox);
 vm.runInContext(fs.readFileSync(path.join(jsDir, 'words7.js'), 'utf8'), sandbox);
 const WORD_DATA = sandbox.WORD_DATA;
@@ -297,6 +301,7 @@ io.on('connection', (socket) => {
                     socketId: sid,
                     nickname: nick
                 });
+                persistRoom(rid);
                 console.log(`[超时] ${nick} 在房间 ${rid} 断线超时，已移除`);
             });
 

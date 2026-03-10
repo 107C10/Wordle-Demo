@@ -39,7 +39,7 @@ const Multiplayer = (function () {
     }
 
     function bindUI() {
-        // 打开房间弹窗
+        // 打开房间弹窗（按钮现在在设置面板中）
         multiplayerBtn.addEventListener('click', () => {
             if (currentRoomId) {
                 // 已在房间中，弹出确认
@@ -48,6 +48,10 @@ const Multiplayer = (function () {
                 }
                 return;
             }
+            // 关闭设置弹窗，打开房间弹窗
+            const settingsModal = document.getElementById('settings-modal');
+            if (settingsModal) settingsModal.classList.add('hidden');
+            syncWordLengthUI();
             roomModal.classList.remove('hidden');
         });
 
@@ -65,6 +69,14 @@ const Multiplayer = (function () {
                 selectedWordLength = parseInt(btn.dataset.length);
             });
         });
+
+        // 打开房间弹窗时同步当前字母长度选择器
+        function syncWordLengthUI() {
+            selectedWordLength = wordLength;
+            roomWordLengthBtns.forEach(b => {
+                b.classList.toggle('active', parseInt(b.dataset.length) === wordLength);
+            });
+        }
 
         // 创建房间
         roomCreateBtn.addEventListener('click', () => {
@@ -170,6 +182,8 @@ const Multiplayer = (function () {
     }
 
     function onRoomError({ message }) {
+        // 如果提交猜测时发生错误，解锁输入
+        isRevealing = false;
         showMessage(message || '房间操作失败', 3000);
     }
 
@@ -458,6 +472,7 @@ const Multiplayer = (function () {
         for (let c = 0; c < roomWordLength; c++) {
             const tile = rowEl.children[c];
             if (!tile) continue;
+            tile.textContent = guess[c];
             tile.setAttribute('data-state', evaluation[c]);
         }
 

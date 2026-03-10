@@ -297,6 +297,7 @@ function handleEnter() {
 
     // ★ 多人模式：发送到服务器，由服务器评估
     if (isMultiplayer && typeof Multiplayer !== 'undefined') {
+        isRevealing = true; // 锁定输入，防止重复提交
         Multiplayer.submitGuess(guess);
         return;
     }
@@ -526,8 +527,8 @@ function bindKeyboard() {
 /** 绑定物理键盘 */
 function bindPhysicalKeyboard() {
     document.addEventListener('keydown', (e) => {
-        // 如果焦点在自定义单词输入框中，不拦截键盘事件
-        if (document.activeElement === customWordInput) return;
+        // 如果焦点在任何输入框中，不拦截键盘事件
+        if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
 
         const key = e.key;
@@ -566,6 +567,10 @@ function bindModalEvents() {
 
     // 重新开始按钮
     restartBtn.addEventListener('click', () => {
+        if (isMultiplayer && typeof Multiplayer !== 'undefined') {
+            Multiplayer.leaveRoom();
+            return;
+        }
         restartGame();
         showMessage('新游戏已开始！', 1000);
     });

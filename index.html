@@ -37,14 +37,6 @@
             <h1>Wordle</h1>
         </div>
         <div class="header-right">
-            <button id="multiplayer-btn" class="icon-btn" title="多人游戏">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
-            </button>
             <button id="stats-btn" class="icon-btn" title="统计">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="20" x2="18" y2="10"></line>
@@ -157,6 +149,15 @@
                     <input type="text" id="custom-word-input" class="custom-word-input" maxlength="5" placeholder="Enter a word" autocomplete="off" spellcheck="false">
                     <button id="custom-word-btn" class="btn-primary">Start</button>
                 </div>
+            </div>
+
+            <!-- Multiplayer -->
+            <div class="setting-item">
+                <div class="setting-info">
+                    <span class="setting-label">Multiplayer</span>
+                    <span class="setting-desc">创建或加入房间，与好友在线对战</span>
+                </div>
+                <button id="multiplayer-btn" class="btn-primary">多人游戏</button>
             </div>
         </div>
     </div>
