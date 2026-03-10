@@ -227,14 +227,24 @@
 
             <div class="room-section">
                 <h3>创建房间</h3>
-                <div class="room-create-row">
-                    <div class="word-length-selector" id="room-word-length">
-                        <button class="word-length-btn active" data-length="5">5</button>
-                        <button class="word-length-btn" data-length="6">6</button>
-                        <button class="word-length-btn" data-length="7">7</button>
+                <div class="room-create-options">
+                    <div class="room-option-row">
+                        <span class="room-option-label">字母数</span>
+                        <div class="word-length-selector" id="room-word-length">
+                            <button class="word-length-btn active" data-length="5">5</button>
+                            <button class="word-length-btn" data-length="6">6</button>
+                            <button class="word-length-btn" data-length="7">7</button>
+                        </div>
                     </div>
-                    <button id="room-create-btn" class="btn-primary">创建房间</button>
+                    <div class="room-option-row">
+                        <span class="room-option-label">模式</span>
+                        <div class="mode-selector" id="room-mode-selector">
+                            <button class="mode-btn active" data-mode="versus">对抗</button>
+                            <button class="mode-btn" data-mode="coop">合作</button>
+                        </div>
+                    </div>
                 </div>
+                <button id="room-create-btn" class="btn-primary" style="width:100%;margin-top:10px">创建房间</button>
             </div>
 
             <div class="room-divider"></div>
@@ -242,7 +252,7 @@
             <div class="room-section">
                 <h3>加入房间</h3>
                 <div class="room-join-row">
-                    <input type="text" id="room-code-input" class="room-input room-code-field" maxlength="6" placeholder="房间码" autocomplete="off">
+                    <input type="text" id="room-code-input" class="room-input room-code-field" maxlength="4" placeholder="4位房间码" autocomplete="off">
                     <button id="room-join-btn" class="btn-primary">加入</button>
                 </div>
             </div>
@@ -252,8 +262,40 @@
     <!-- 房间信息栏（在房间中时显示） -->
     <div id="room-info" class="room-info hidden">
         <span class="room-code-tag">房间 <strong id="room-code-display"></strong></span>
-        <span class="room-player-count" id="room-player-count">1/8</span>
+        <button id="room-copy-btn" class="btn-room-copy" title="复制房间码">📋</button>
+        <span class="room-mode-tag" id="room-mode-display"></span>
+        <span class="room-player-count" id="room-player-count">选手 1/4</span>
+        <span class="room-role-tag" id="room-role-display">选手</span>
+        <button id="room-start-btn" class="btn-room-start hidden">开始游戏</button>
         <button id="room-leave-btn" class="btn-room-leave">退出</button>
+    </div>
+
+    <!-- 等待开始提示 -->
+    <div id="waiting-message" class="waiting-message hidden">等待房主开始游戏...</div>
+
+    <!-- 观众信息栏 -->
+    <div id="spectator-bar" class="spectator-bar hidden">
+        <span>👁 观战中 · 视角: </span>
+        <span id="spectator-view-name"></span>
+    </div>
+
+    <!-- 再来一局覆盖层 -->
+    <div id="play-again-overlay" class="play-again-overlay hidden">
+        <div class="play-again-content">
+            <div id="play-again-answer" class="play-again-answer"></div>
+            <!-- 选手按钮 -->
+            <div id="play-again-player-actions">
+                <button id="play-again-btn" class="btn-primary play-again-btn">再来一局</button>
+                <button id="play-again-leave-btn" class="btn-secondary play-again-btn" style="margin-left:8px">退出房间</button>
+            </div>
+            <!-- 观众按钮 -->
+            <div id="play-again-spectator-actions" class="hidden">
+                <button id="play-again-join-seat-btn" class="btn-primary play-again-btn">加入选手席</button>
+                <button id="play-again-spectator-leave-btn" class="btn-secondary play-again-btn" style="margin-left:8px">退出房间</button>
+                <div id="play-again-seat-info" class="play-again-seat-info"></div>
+            </div>
+            <div id="play-again-status" class="play-again-status"></div>
+        </div>
     </div>
 
     <!-- 游戏主体 -->

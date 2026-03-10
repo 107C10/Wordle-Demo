@@ -234,6 +234,10 @@ function getRow(row) {
 /** 输入一个字母 */
 function handleLetter(letter) {
     if (gameOver || isRevealing) return;
+    // 观众/游戏未开始 → 禁止输入
+    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
+        if (Multiplayer.isSpectator || !Multiplayer.gameStarted) return;
+    }
     if (currentCol >= wordLength) return;
 
     const tile = getTile(currentRow, currentCol);
@@ -251,6 +255,9 @@ function handleLetter(letter) {
 /** 删除最后一个字母 */
 function handleBackspace() {
     if (gameOver || isRevealing) return;
+    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
+        if (Multiplayer.isSpectator || !Multiplayer.gameStarted) return;
+    }
     if (currentCol <= 0) return;
 
     currentCol--;
@@ -268,6 +275,9 @@ function handleBackspace() {
 /** 提交猜测 */
 function handleEnter() {
     if (gameOver || isRevealing) return;
+    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
+        if (Multiplayer.isSpectator || !Multiplayer.gameStarted) return;
+    }
 
     // 检查是否填满5个字母
     if (currentCol < wordLength) {
@@ -322,9 +332,7 @@ function applyGuessResult(guess, evaluation, mpWon, mpAnswer) {
     recordHints(guess, evaluation);
 
     // 更新 Solver 的剩余可能答案
-    if (!isMultiplayer) {
-        updateSolverAfterGuess(guess, evaluation);
-    }
+    updateSolverAfterGuess(guess, evaluation);
 
     const revealDuration = wordLength * 300 + 250;
 
@@ -529,6 +537,9 @@ function bindPhysicalKeyboard() {
     document.addEventListener('keydown', (e) => {
         // 如果焦点在任何输入框中，不拦截键盘事件
         if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+        // 如果有模态框打开（含房间弹窗、设置、帮助等），不拦截
+        const anyModalOpen = document.querySelector('.modal:not(.hidden)') || document.querySelector('.play-again-overlay:not(.hidden)');
+        if (anyModalOpen) return;
         if (e.ctrlKey || e.metaKey || e.altKey) return;
 
         const key = e.key;
@@ -901,10 +912,12 @@ function getDefaultStats() {
 
 /**
  * 从 localStorage 加载统计数据
+ * @param {boolean} [mp] - 是否加载多人模式统计
  */
-function loadStats() {
+function loadStats(mp) {
+    const key = mp ? 'wordle-mp-stats' : 'wordle-stats';
     try {
-        const saved = localStorage.getItem('wordle-stats');
+        const saved = localStorage.getItem(key);
         if (saved) return JSON.parse(saved);
     } catch (e) {}
     return getDefaultStats();
@@ -912,18 +925,22 @@ function loadStats() {
 
 /**
  * 保存统计数据到 localStorage
+ * @param {object} stats
+ * @param {boolean} [mp] - 是否保存多人模式统计
  */
-function saveStats(stats) {
-    localStorage.setItem('wordle-stats', JSON.stringify(stats));
+function saveStats(stats, mp) {
+    const key = mp ? 'wordle-mp-stats' : 'wordle-stats';
+    localStorage.setItem(key, JSON.stringify(stats));
 }
 
 /**
  * 记录一局游戏结果
  * @param {boolean} won - 是否胜利
  * @param {number} guesses - 用了几次猜对（1-6），失败则为 0
+ * @param {boolean} [mp] - 是否多人模式
  */
-function recordGameResult(won, guesses) {
-    const stats = loadStats();
+function recordGameResult(won, guesses, mp) {
+    const stats = loadStats(mp);
     stats.played++;
     if (won) {
         stats.won++;
@@ -931,19 +948,19 @@ function recordGameResult(won, guesses) {
         if (stats.currentStreak > stats.maxStreak) {
             stats.maxStreak = stats.currentStreak;
         }
-        stats.distribution[guesses - 1]++;
+        if (guesses >= 1 && guesses <= 6) stats.distribution[guesses - 1]++;
     } else {
         stats.currentStreak = 0;
     }
-    saveStats(stats);
+    saveStats(stats, mp);
 }
 
 /**
  * 渲染统计面板
- * @param {number} [highlightRow] - 高亮的行号（刚猜对的行，0-based index in distribution）
+ * @param {number} [highlightRow] - 高亮的行号（0-based）
  */
 function renderStats(highlightRow) {
-    const stats = loadStats();
+    const stats = loadStats(isMultiplayer);
     const winPct = stats.played > 0 ? Math.round((stats.won / stats.played) * 100) : 0;
 
     statPlayed.textContent = stats.played;
@@ -991,7 +1008,7 @@ function showStats(highlightRow) {
  * 清除统计数据
  */
 function clearStats() {
-    localStorage.removeItem('wordle-stats');
+    localStorage.removeItem(isMultiplayer ? 'wordle-mp-stats' : 'wordle-stats');
     renderStats();
 }
 

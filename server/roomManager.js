@@ -1,182 +1,206 @@
 /**
  * Room Manager — 内存房间管理
  *
- * 房间结构:
- * {
- *   id:          string,           // 6 位大写字母房间码
- *   wordLength:  number,           // 5 | 6 | 7
- *   answer:      string,           // 目标单词（大写）
- *   hostId:      string,           // 房主 socket.id
- *   players:     Map<socketId, PlayerInfo>,
- *   history:     Map<socketId, Array<{ guess, evaluation }>>,
- *   createdAt:   number
- * }
+ * 支持两种模式:
+ * - versus: 对抗模式，各自猜词，任一方完成则全局结束
+ * - coop:   合作模式，共享棋盘，共用6次机会
  *
- * PlayerInfo:
- * {
- *   nickname:     string,
- *   currentRow:   number,
- *   currentCol:   number,
- *   candidateRow: string[],   // 当前正在输入的行
- *   gameOver:     boolean,
- *   won:          boolean
- * }
+ * 房间角色:
+ * - 房主 (host): 创建房间，可以开始游戏
+ * - 选手 (players): 最多 MAX_SEATS 人，参与游戏
+ * - 观众 (spectators): 无上限，只能观战
  */
 
-const crypto = require('crypto');
-
-// ─── 内存存储 ─────────────────────────────────────
 const rooms = new Map();
-const disconnectedPlayers = new Map(); // socketId -> { roomId, nickname, timer }
-const DISCONNECT_TIMEOUT = 60000;      // 60 秒断线保护
+const disconnectedPlayers = new Map();
+const DISCONNECT_TIMEOUT = 60000;
+const MAX_SEATS = 4;
 
-// ─── 工具函数 ─────────────────────────────────────
-
-/** 生成 6 位大写字母房间码 */
+/** 生成 4 位数字房间码 */
 function generateRoomId() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 去掉易混淆字符 I/O/0/1
     let id;
     do {
-        id = '';
-        const bytes = crypto.randomBytes(6);
-        for (let i = 0; i < 6; i++) {
-            id += chars[bytes[i] % chars.length];
-        }
+        id = String(Math.floor(1000 + Math.random() * 9000));
     } while (rooms.has(id));
     return id;
 }
 
+function createPlayerData(nickname) {
+    return {
+        nickname,
+        currentRow: 0,
+        currentCol: 0,
+        candidateRow: [],
+        gameOver: false,
+        won: false,
+        disconnected: false
+    };
+}
+
 // ─── 公开 API ─────────────────────────────────────
 
-/**
- * 创建房间
- * @param {string} hostSocketId
- * @param {string} nickname
- * @param {number} wordLength   5 | 6 | 7
- * @param {string} answer       目标单词（大写）
- * @returns {{ ok: boolean, room?: object, error?: string }}
- */
-function createRoom(hostSocketId, nickname, wordLength, answer) {
+function createRoom(hostSocketId, nickname, wordLength, answer, mode) {
     if (![5, 6, 7].includes(wordLength)) {
         return { ok: false, error: '无效的单词长度' };
     }
     if (!answer || answer.length !== wordLength) {
         return { ok: false, error: '无效的目标单词' };
     }
+    if (!['versus', 'coop'].includes(mode)) mode = 'versus';
 
     const id = generateRoomId();
     const room = {
         id,
         wordLength,
         answer: answer.toUpperCase(),
+        mode,
         hostId: hostSocketId,
-        players: new Map(),
+        gameStarted: false,
+        players: new Map(),       // 选手席
+        spectators: new Map(),    // 观众席
         history: new Map(),
+        coopHistory: [],
+        roundOver: false,
+        roundAnswer: '',
+        playAgainVotes: new Set(),
         createdAt: Date.now()
     };
 
-    // 房主自动加入
-    room.players.set(hostSocketId, {
-        nickname,
-        currentRow: 0,
-        currentCol: 0,
-        candidateRow: [],
-        gameOver: false,
-        won: false
-    });
+    room.players.set(hostSocketId, createPlayerData(nickname));
     room.history.set(hostSocketId, []);
 
     rooms.set(id, room);
     return { ok: true, room };
 }
 
-/**
- * 加入房间
- * @param {string} roomId
- * @param {string} socketId
- * @param {string} nickname
- * @returns {{ ok: boolean, room?: object, error?: string }}
- */
 function joinRoom(roomId, socketId, nickname) {
     const room = rooms.get(roomId);
     if (!room) return { ok: false, error: '房间不存在' };
-    if (room.players.size >= 8) return { ok: false, error: '房间已满（最多 8 人）' };
-    if (room.players.has(socketId)) return { ok: false, error: '你已在房间中' };
+    if (room.players.has(socketId) || room.spectators.has(socketId)) {
+        return { ok: false, error: '你已在房间中' };
+    }
 
-    room.players.set(socketId, {
-        nickname,
-        currentRow: 0,
-        currentCol: 0,
-        candidateRow: [],
-        gameOver: false,
-        won: false
-    });
-    room.history.set(socketId, []);
+    // 检查昵称重复
+    for (const [, p] of room.players) {
+        if (p.nickname === nickname) {
+            return { ok: false, error: '昵称与房间内玩家重复，请更换昵称' };
+        }
+    }
+    for (const [, s] of room.spectators) {
+        if (s.nickname === nickname) {
+            return { ok: false, error: '昵称与房间内玩家重复，请更换昵称' };
+        }
+    }
 
-    return { ok: true, room };
+    // 游戏未开始 且 选手席未满 → 进入选手席；否则 → 观众席
+    if (!room.gameStarted && room.players.size < MAX_SEATS) {
+        room.players.set(socketId, createPlayerData(nickname));
+        room.history.set(socketId, []);
+        return { ok: true, room, role: 'player' };
+    } else {
+        room.spectators.set(socketId, { nickname, disconnected: false });
+        return { ok: true, room, role: 'spectator' };
+    }
 }
 
-/**
- * 离开房间
- * @param {string} roomId
- * @param {string} socketId
- * @returns {{ ok: boolean, isEmpty: boolean, newHostId?: string }}
- */
+/** 房主开始游戏 */
+function startGame(roomId, socketId) {
+    const room = rooms.get(roomId);
+    if (!room) return { ok: false, error: '房间不存在' };
+    if (room.hostId !== socketId) return { ok: false, error: '只有房主可以开始游戏' };
+    if (room.gameStarted) return { ok: false, error: '游戏已经开始' };
+
+    let activeSeats = 0;
+    for (const [, p] of room.players) {
+        if (!p.disconnected) activeSeats++;
+    }
+    if (activeSeats < 2) return { ok: false, error: '至少需要 2 名选手才能开始' };
+
+    room.gameStarted = true;
+    return { ok: true };
+}
+
+/** 观众加入选手席（仅在回合结束后、下一轮开始前可用） */
+function joinSeat(roomId, socketId) {
+    const room = rooms.get(roomId);
+    if (!room) return { ok: false, error: '房间不存在' };
+    if (!room.spectators.has(socketId)) return { ok: false, error: '你不是观众' };
+    if (room.players.size >= MAX_SEATS) return { ok: false, error: '选手席已满' };
+    if (room.gameStarted && !room.roundOver) return { ok: false, error: '游戏进行中，无法加入选手席' };
+
+    const spec = room.spectators.get(socketId);
+    room.spectators.delete(socketId);
+    room.players.set(socketId, createPlayerData(spec.nickname));
+    room.history.set(socketId, []);
+
+    return { ok: true, nickname: spec.nickname };
+}
+
 function leaveRoom(roomId, socketId) {
     const room = rooms.get(roomId);
     if (!room) return { ok: false, isEmpty: true };
 
-    room.players.delete(socketId);
-    room.history.delete(socketId);
+    const isPlayer = room.players.has(socketId);
+    const isSpectator = room.spectators.has(socketId);
 
-    if (room.players.size === 0) {
+    if (isPlayer) {
+        room.players.delete(socketId);
+        room.history.delete(socketId);
+        room.playAgainVotes.delete(socketId);
+    } else if (isSpectator) {
+        room.spectators.delete(socketId);
+    }
+
+    const totalPeople = room.players.size + room.spectators.size;
+    if (totalPeople === 0) {
         rooms.delete(roomId);
-        return { ok: true, isEmpty: true };
+        return { ok: true, isEmpty: true, wasPlayer: isPlayer };
     }
 
-    // 如果离开的是房主，转移房主
+    // 转移房主
+    let newHostId = room.hostId;
     if (room.hostId === socketId) {
-        room.hostId = room.players.keys().next().value;
+        newHostId = null;
+        for (const [sid, p] of room.players) {
+            if (!p.disconnected) { newHostId = sid; break; }
+        }
+        if (!newHostId) {
+            for (const [sid, s] of room.spectators) {
+                if (!s.disconnected) { newHostId = sid; break; }
+            }
+        }
+        if (newHostId) room.hostId = newHostId;
     }
 
-    return { ok: true, isEmpty: false, newHostId: room.hostId };
+    return { ok: true, isEmpty: false, newHostId: room.hostId, wasPlayer: isPlayer };
 }
 
-/**
- * 获取房间
- * @param {string} roomId
- * @returns {object|null}
- */
 function getRoom(roomId) {
     return rooms.get(roomId) || null;
 }
 
-/**
- * 获取玩家所在的房间 ID
- * @param {string} socketId
- * @returns {string|null}
- */
 function findRoomBySocket(socketId) {
     for (const [roomId, room] of rooms) {
-        if (room.players.has(socketId)) return roomId;
+        if (room.players.has(socketId) || room.spectators.has(socketId)) return roomId;
     }
     return null;
 }
 
-/**
- * 记录一次猜测
- * @param {string} roomId
- * @param {string} socketId
- * @param {string} guess
- * @param {string[]} evaluation
- * @returns {{ ok: boolean, error?: string }}
- */
+function getRole(room, socketId) {
+    if (room.players.has(socketId)) return 'player';
+    if (room.spectators.has(socketId)) return 'spectator';
+    return null;
+}
+
+/** 记录 versus 模式猜测 */
 function recordGuess(roomId, socketId, guess, evaluation) {
     const room = rooms.get(roomId);
     if (!room) return { ok: false, error: '房间不存在' };
+    if (!room.gameStarted) return { ok: false, error: '游戏尚未开始' };
+    if (room.roundOver) return { ok: false, error: '本轮已结束' };
 
     const player = room.players.get(socketId);
-    if (!player) return { ok: false, error: '你不在此房间' };
+    if (!player) return { ok: false, error: '你不是选手' };
     if (player.gameOver) return { ok: false, error: '你的游戏已结束' };
 
     const hist = room.history.get(socketId);
@@ -185,8 +209,8 @@ function recordGuess(roomId, socketId, guess, evaluation) {
     player.currentCol = 0;
     player.candidateRow = [];
 
-    // 检查是否猜对
-    if (evaluation.every(e => e === 'correct')) {
+    const won = evaluation.every(e => e === 'correct');
+    if (won) {
         player.gameOver = true;
         player.won = true;
     } else if (hist.length >= 6) {
@@ -197,11 +221,109 @@ function recordGuess(roomId, socketId, guess, evaluation) {
     return { ok: true };
 }
 
-/**
- * 序列化房间状态（安全版，不含 answer）
- * @param {object} room
- * @returns {object}
- */
+/** 记录 coop 模式猜测 */
+function recordCoopGuess(roomId, socketId, guess, evaluation) {
+    const room = rooms.get(roomId);
+    if (!room) return { ok: false, error: '房间不存在' };
+    if (!room.gameStarted) return { ok: false, error: '游戏尚未开始' };
+    if (room.roundOver) return { ok: false, error: '本轮已结束' };
+
+    const player = room.players.get(socketId);
+    if (!player) return { ok: false, error: '你不是选手' };
+
+    room.coopHistory.push({ guess, evaluation, nickname: player.nickname, socketId });
+
+    const won = evaluation.every(e => e === 'correct');
+    const usedAll = room.coopHistory.length >= 6;
+
+    if (won || usedAll) {
+        room.roundOver = true;
+        room.roundAnswer = room.answer;
+        for (const [, p] of room.players) {
+            p.gameOver = true;
+            p.won = won;
+        }
+    }
+
+    return { ok: true, won, usedAll, roundOver: won || usedAll };
+}
+
+/** 检查 versus 模式是否全局结束 */
+function checkVersusRoundOver(room) {
+    if (room.roundOver) return true;
+
+    let anyWon = false;
+    let allDone = true;
+
+    for (const [, player] of room.players) {
+        if (player.disconnected) continue;
+        if (player.won) anyWon = true;
+        if (!player.gameOver) allDone = false;
+    }
+
+    if (anyWon || allDone) {
+        room.roundOver = true;
+        room.roundAnswer = room.answer;
+        for (const [, player] of room.players) {
+            if (!player.gameOver) {
+                player.gameOver = true;
+                player.won = false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+/** 投票再来一局（仅选手可投票） */
+function votePlayAgain(roomId, socketId) {
+    const room = rooms.get(roomId);
+    if (!room) return { ok: false, error: '房间不存在' };
+    if (!room.roundOver) return { ok: false, error: '本轮尚未结束' };
+    if (!room.players.has(socketId)) return { ok: false, error: '只有选手可以投票' };
+
+    room.playAgainVotes.add(socketId);
+    return getPlayAgainStatus(room);
+}
+
+/** 获取投票状态（排除断线选手） */
+function getPlayAgainStatus(room) {
+    // 清理断线/已离开选手的投票
+    for (const sid of room.playAgainVotes) {
+        const p = room.players.get(sid);
+        if (!p || p.disconnected) {
+            room.playAgainVotes.delete(sid);
+        }
+    }
+
+    let activeCount = 0;
+    for (const [, p] of room.players) {
+        if (!p.disconnected) activeCount++;
+    }
+
+    const allAgreed = activeCount > 0 && room.playAgainVotes.size >= activeCount;
+    return { ok: true, allAgreed, voteCount: room.playAgainVotes.size, totalNeeded: activeCount };
+}
+
+/** 重置房间开始新一轮 */
+function resetRound(room, newAnswer) {
+    room.answer = newAnswer.toUpperCase();
+    room.roundOver = false;
+    room.roundAnswer = '';
+    room.playAgainVotes.clear();
+    room.coopHistory = [];
+    // gameStarted 保持 true
+
+    for (const [sid, player] of room.players) {
+        player.currentRow = 0;
+        player.currentCol = 0;
+        player.candidateRow = [];
+        player.gameOver = false;
+        player.won = false;
+        room.history.set(sid, []);
+    }
+}
+
 function serializeRoom(room) {
     const players = {};
     for (const [sid, p] of room.players) {
@@ -209,7 +331,15 @@ function serializeRoom(room) {
             nickname: p.nickname,
             currentRow: p.currentRow,
             gameOver: p.gameOver,
-            won: p.won
+            won: p.won,
+            disconnected: !!p.disconnected
+        };
+    }
+    const spectators = {};
+    for (const [sid, s] of room.spectators) {
+        spectators[sid] = {
+            nickname: s.nickname,
+            disconnected: !!s.disconnected
         };
     }
     const history = {};
@@ -219,131 +349,132 @@ function serializeRoom(room) {
     return {
         id: room.id,
         wordLength: room.wordLength,
+        mode: room.mode,
         hostId: room.hostId,
+        gameStarted: room.gameStarted,
         players,
-        history
+        spectators,
+        history,
+        coopHistory: room.coopHistory,
+        roundOver: room.roundOver,
+        roundAnswer: room.roundAnswer,
+        playAgainVotes: room.playAgainVotes.size
     };
 }
 
-/**
- * 列出所有房间（调试用）
- */
-function listRooms() {
-    const result = [];
-    for (const [id, room] of rooms) {
-        result.push({
-            id,
-            wordLength: room.wordLength,
-            playerCount: room.players.size,
-            createdAt: room.createdAt
-        });
-    }
-    return result;
-}
-
-/**
- * 标记玩家为断线状态（不立即移除，等待重连）
- * @param {string} roomId
- * @param {string} socketId
- * @param {function} onTimeout - 超时后的回调
- * @returns {{ ok: boolean, nickname?: string }}
- */
 function disconnectPlayer(roomId, socketId, onTimeout) {
     const room = rooms.get(roomId);
     if (!room) return { ok: false };
 
-    const player = room.players.get(socketId);
-    if (!player) return { ok: false };
+    const isPlayer = room.players.has(socketId);
+    const isSpectator = room.spectators.has(socketId);
+    if (!isPlayer && !isSpectator) return { ok: false };
 
-    const nickname = player.nickname;
+    let nickname;
+    if (isPlayer) {
+        const player = room.players.get(socketId);
+        nickname = player.nickname;
+        player.disconnected = true;
+    } else {
+        const spec = room.spectators.get(socketId);
+        nickname = spec.nickname;
+        spec.disconnected = true;
+    }
 
-    // 标记为断线
-    player.disconnected = true;
-
-    // 设置超时清理
     const timer = setTimeout(() => {
         disconnectedPlayers.delete(socketId);
-        // 超时：正式移除
         const r = rooms.get(roomId);
-        if (r && r.players.has(socketId)) {
+        if (!r) return;
+
+        if (r.players.has(socketId)) {
             r.players.delete(socketId);
             r.history.delete(socketId);
-            if (r.players.size === 0) {
-                rooms.delete(roomId);
-            } else if (r.hostId === socketId) {
-                // 转移房主到第一个非断线玩家
-                for (const [sid, p] of r.players) {
-                    if (!p.disconnected) {
-                        r.hostId = sid;
-                        break;
-                    }
-                }
+            r.playAgainVotes.delete(socketId);
+        } else if (r.spectators.has(socketId)) {
+            r.spectators.delete(socketId);
+        }
+
+        if (r.players.size + r.spectators.size === 0) {
+            rooms.delete(roomId);
+        } else if (r.hostId === socketId) {
+            for (const [sid, p] of r.players) {
+                if (!p.disconnected) { r.hostId = sid; break; }
             }
         }
+
         if (onTimeout) onTimeout(roomId, socketId, nickname);
     }, DISCONNECT_TIMEOUT);
 
-    disconnectedPlayers.set(socketId, { roomId, nickname, timer });
-    return { ok: true, nickname };
+    disconnectedPlayers.set(socketId, { roomId, nickname, timer, role: isPlayer ? 'player' : 'spectator' });
+    return { ok: true, nickname, role: isPlayer ? 'player' : 'spectator' };
 }
 
-/**
- * 尝试重连到房间
- * @param {string} roomId
- * @param {string} newSocketId  新的 socket.id
- * @param {string} nickname     昵称（用于匹配）
- * @returns {{ ok: boolean, room?: object, oldSocketId?: string, error?: string }}
- */
 function rejoinRoom(roomId, newSocketId, nickname) {
     const room = rooms.get(roomId);
     if (!room) return { ok: false, error: '房间不存在' };
 
-    // 查找断线的同名玩家
     let oldSocketId = null;
+    let role = null;
+
+    // 先在选手席中查找
     for (const [sid, player] of room.players) {
         if (player.nickname === nickname && player.disconnected) {
             oldSocketId = sid;
+            role = 'player';
             break;
         }
     }
 
+    // 再在观众席中查找
     if (!oldSocketId) {
-        return { ok: false, error: '未找到断线的玩家，请重新加入' };
+        for (const [sid, spec] of room.spectators) {
+            if (spec.nickname === nickname && spec.disconnected) {
+                oldSocketId = sid;
+                role = 'spectator';
+                break;
+            }
+        }
     }
 
-    // 取消超时定时器
+    if (!oldSocketId) return { ok: false, error: '未找到断线的玩家，请重新加入' };
+
     const dcInfo = disconnectedPlayers.get(oldSocketId);
     if (dcInfo) {
         clearTimeout(dcInfo.timer);
         disconnectedPlayers.delete(oldSocketId);
     }
 
-    // 迁移数据到新 socketId
-    const playerData = room.players.get(oldSocketId);
-    playerData.disconnected = false;
-    room.players.delete(oldSocketId);
-    room.players.set(newSocketId, playerData);
+    if (role === 'player') {
+        const playerData = room.players.get(oldSocketId);
+        playerData.disconnected = false;
+        room.players.delete(oldSocketId);
+        room.players.set(newSocketId, playerData);
 
-    const histData = room.history.get(oldSocketId);
-    room.history.delete(oldSocketId);
-    room.history.set(newSocketId, histData || []);
+        const histData = room.history.get(oldSocketId);
+        room.history.delete(oldSocketId);
+        room.history.set(newSocketId, histData || []);
 
-    if (room.hostId === oldSocketId) {
-        room.hostId = newSocketId;
+        if (room.playAgainVotes.has(oldSocketId)) {
+            room.playAgainVotes.delete(oldSocketId);
+            room.playAgainVotes.add(newSocketId);
+        }
+    } else {
+        const specData = room.spectators.get(oldSocketId);
+        specData.disconnected = false;
+        room.spectators.delete(oldSocketId);
+        room.spectators.set(newSocketId, specData);
     }
 
-    return { ok: true, room, oldSocketId };
+    if (room.hostId === oldSocketId) room.hostId = newSocketId;
+
+    return { ok: true, room, oldSocketId, role };
 }
 
 module.exports = {
-    createRoom,
-    joinRoom,
-    leaveRoom,
-    getRoom,
-    findRoomBySocket,
-    recordGuess,
-    serializeRoom,
-    listRooms,
-    disconnectPlayer,
-    rejoinRoom
+    createRoom, joinRoom, leaveRoom, getRoom, findRoomBySocket, getRole,
+    startGame, joinSeat,
+    recordGuess, recordCoopGuess, checkVersusRoundOver,
+    votePlayAgain, resetRound, getPlayAgainStatus,
+    serializeRoom, disconnectPlayer, rejoinRoom,
+    MAX_SEATS
 };

@@ -16,5 +16,8 @@
   },
   "optionalDependencies": {
     "ioredis": "^5.3.2"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
   }
 }

@@ -60,7 +60,8 @@ body {
     flex-direction: column;
     align-items: center;
     height: 100vh;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     transition: background-color 0.3s, color 0.3s;
 }
 
@@ -959,7 +960,7 @@ body {
    多人游戏 - 房间弹窗
    =========================== */
 .room-content {
-    max-width: 380px;
+    max-width: 400px;
 }
 
 .room-field {
@@ -985,6 +986,7 @@ body {
     color: var(--color-text);
     outline: none;
     transition: border-color 0.2s;
+    box-sizing: border-box;
 }
 
 .room-input:focus {
@@ -999,13 +1001,56 @@ body {
 
 .room-code-field {
     text-transform: uppercase;
-    letter-spacing: 0.25em;
+    letter-spacing: 0.3em;
     font-weight: 700;
+    text-align: center;
 }
 
 .room-section h3 {
     font-size: 0.95rem;
     margin-bottom: 10px;
+}
+
+.room-create-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.room-option-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.room-option-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.mode-selector {
+    display: flex;
+    gap: 0;
+    border: 2px solid var(--color-tile-border-filled);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.mode-btn {
+    padding: 6px 16px;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+.mode-btn.active {
+    background: var(--color-correct);
+    color: #fff;
 }
 
 .room-create-row,
@@ -1034,7 +1079,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
+    gap: 8px;
     padding: 6px 16px;
     background: var(--color-correct);
     color: #ffffff;
@@ -1048,6 +1093,28 @@ body {
 
 .room-code-tag {
     letter-spacing: 0.1em;
+}
+
+.btn-room-copy {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0 2px;
+    line-height: 1;
+    opacity: 0.85;
+    transition: opacity 0.2s;
+}
+
+.btn-room-copy:hover {
+    opacity: 1;
+}
+
+.room-mode-tag {
+    background: rgba(255,255,255,0.2);
+    padding: 1px 8px;
+    border-radius: 3px;
+    font-size: 0.75rem;
 }
 
 .room-player-count {
@@ -1071,17 +1138,132 @@ body {
     background: rgba(255,255,255,0.35);
 }
 
+.room-role-tag {
+    background: rgba(255,255,255,0.2);
+    padding: 1px 8px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+}
+
+.btn-room-start {
+    background: #ffffff;
+    color: var(--color-correct);
+    border: none;
+    padding: 2px 12px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.btn-room-start:hover {
+    opacity: 0.85;
+}
+
+.btn-room-start:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-room-start.hidden {
+    display: none;
+}
+
+/* ===========================
+   等待/观众提示
+   =========================== */
+.waiting-message {
+    width: 100%;
+    max-width: 700px;
+    text-align: center;
+    padding: 12px 16px;
+    background: rgba(255,255,255,0.08);
+    color: var(--color-text);
+    font-size: 0.95rem;
+    border-radius: 8px;
+    margin: 8px auto;
+}
+
+.waiting-message.hidden {
+    display: none;
+}
+
+.spectator-bar {
+    width: 100%;
+    max-width: 700px;
+    text-align: center;
+    padding: 6px 12px;
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--color-text);
+    font-size: 0.85rem;
+    border-radius: 6px;
+    margin: 4px auto;
+}
+
+.spectator-bar.hidden {
+    display: none;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.btn-secondary {
+    background: var(--color-absent);
+    color: #ffffff;
+}
+
+.btn-secondary:hover {
+    opacity: 0.85;
+}
+
+/* ===========================
+   多人游戏 - 左右布局
+   =========================== */
+body.multiplayer-active #game {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: center;
+    max-width: 700px;
+    gap: 8px;
+    padding: 0 8px;
+}
+
+body.multiplayer-active #board-container {
+    flex-shrink: 0;
+    flex-grow: 0;
+}
+
+body.multiplayer-active #keyboard {
+    flex-basis: 100%;
+    margin: 0 auto;
+}
+
+body.multiplayer-active #message-container {
+    position: fixed;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    width: auto;
+}
+
 /* ===========================
    多人游戏 - 对手面板
    =========================== */
 .opponents-container {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 10px;
-    padding: 6px 8px;
-    width: 100%;
-    max-width: 500px;
+    flex-direction: column;
+    gap: 8px;
+    padding: 6px 4px;
+    min-width: 80px;
+    max-width: 140px;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+    order: -1;    /* 确保在左侧 */
 }
 
 .opponents-container.hidden {
@@ -1098,6 +1280,21 @@ body {
     border-radius: 6px;
     background: var(--color-bg);
     min-width: 60px;
+    transition: border-color 0.2s;
+}
+
+.opponent-card.spectator-clickable {
+    cursor: pointer;
+}
+
+.opponent-card.spectator-clickable:hover {
+    border-color: var(--color-present);
+}
+
+.opponent-card.spectator-selected {
+    border-color: var(--color-correct);
+    border-width: 2px;
+    box-shadow: 0 0 6px rgba(83, 141, 78, 0.4);
 }
 
 .opponent-nickname {
@@ -1125,6 +1322,12 @@ body {
     height: 10px;
     border: 1px solid var(--color-tile-border);
     border-radius: 1px;
+    font-size: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    line-height: 1;
 }
 
 .opponent-tile[data-state="correct"] {
@@ -1159,4 +1362,118 @@ body {
 .opponent-status.lost {
     color: #e74c3c;
     font-weight: 700;
+}
+
+/* ===========================
+   合作模式 - 猜测者标签
+   =========================== */
+.coop-guesser-tag {
+    position: absolute;
+    right: -60px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.6rem;
+    color: var(--color-absent);
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+#board .row {
+    position: relative;
+}
+
+/* ===========================
+   再来一局覆盖层
+   =========================== */
+.play-again-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+}
+
+.play-again-overlay.hidden {
+    display: none;
+}
+
+.play-again-content {
+    background: var(--color-bg);
+    color: var(--color-text);
+    padding: 32px 40px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    min-width: 240px;
+}
+
+.play-again-answer {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    letter-spacing: 0.1em;
+}
+
+.play-again-btn {
+    padding: 10px 28px;
+    font-size: 1rem;
+}
+
+.play-again-status {
+    margin-top: 12px;
+    font-size: 0.85rem;
+    color: var(--color-absent);
+}
+
+.play-again-seat-info {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: var(--color-absent);
+}
+
+/* ===========================
+   多人游戏响应式
+   =========================== */
+@media (max-width: 600px) {
+    body.multiplayer-active #game {
+        gap: 4px;
+    }
+    .opponents-container {
+        min-width: 55px;
+        max-width: 80px;
+    }
+    .opponent-tile {
+        width: 8px;
+        height: 8px;
+    }
+    .coop-guesser-tag {
+        right: -50px;
+        font-size: 0.5rem;
+    }
+}
+
+@media (max-width: 400px) {
+    .opponents-container {
+        min-width: 50px;
+        max-width: 70px;
+    }
+    .opponent-tile {
+        width: 7px;
+        height: 7px;
+    }
+}
+
+/* 多人模式下 solver 面板不遮挡棋盘 */
+body.multiplayer-active .solver-panel {
+    left: auto;
+    right: 8px;
+    transform: none;
+    animation: slideDownRight 0.2s ease-out;
+}
+
+@keyframes slideDownRight {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
 }

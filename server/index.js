@@ -1,6 +1,7 @@
 /**
  * Wordle Multiplayer Server
- * Express 提供静态文件 + Socket.IO 实时通信
+ * Express 静态文件 + Socket.IO 实时通信
+ * 支持 versus / coop 模式，选手席 + 观众席架构
  */
 
 const express = require('express');
@@ -17,7 +18,6 @@ const { createRedisStore } = require('./redisStore');
 // ─── 可选 Redis 持久化 ───────────────────────────
 const redisStore = createRedisStore();
 
-/** 保存房间到 Redis（如果可用） */
 async function persistRoom(roomId) {
     if (!redisStore) return;
     const room = RoomManager.getRoom(roomId);
@@ -30,12 +30,10 @@ async function persistRoom(roomId) {
     }
 }
 
-// ─── 加载词库（在沙箱中执行浏览器端 JS）──────────
+// ─── 加载词库 ────────────────────────────────────
 const sandbox = { WORD_DATA: {} };
 vm.createContext(sandbox);
 const jsDir = path.join(__dirname, '..', 'js');
-// words.js 中 'const WORD_DATA = {};' 会在 VM 脚本作用域创建局部变量，
-// 导致 sandbox.WORD_DATA 始终为空。需要去掉这行，让它使用 sandbox 的全局 WORD_DATA。
 const wordsCode = fs.readFileSync(path.join(jsDir, 'words.js'), 'utf8')
     .replace(/^const WORD_DATA\s*=\s*\{\};?/m, '');
 vm.runInContext(wordsCode, sandbox);
@@ -43,7 +41,6 @@ vm.runInContext(fs.readFileSync(path.join(jsDir, 'words6.js'), 'utf8'), sandbox)
 vm.runInContext(fs.readFileSync(path.join(jsDir, 'words7.js'), 'utf8'), sandbox);
 const WORD_DATA = sandbox.WORD_DATA;
 
-/** 根据长度获取词库 */
 function getWordSet(len) {
     const data = WORD_DATA[len];
     if (!data) return null;
@@ -53,7 +50,6 @@ function getWordSet(len) {
     };
 }
 
-/** 随机选词 */
 function pickRandomWord(len) {
     const ws = getWordSet(len);
     if (!ws) return null;
@@ -63,19 +59,16 @@ function pickRandomWord(len) {
 // ─── Express ──────────────────────────────────────
 const app    = express();
 const server = http.createServer(app);
-
-const ROOT = path.join(__dirname, '..');
+const ROOT   = path.join(__dirname, '..');
 app.use(express.static(ROOT));
 
 // ─── Socket.IO ────────────────────────────────────
-const io = new Server(server, {
-    cors: { origin: '*' }
-});
+const io = new Server(server, { cors: { origin: '*' } });
 
 // ─── 速率限制 ─────────────────────────────────────
-const rateLimits = new Map(); // socketId -> { count, resetAt }
-const RATE_LIMIT_WINDOW = 1000; // 1 秒
-const RATE_LIMIT_MAX    = 30;   // 每秒最多 30 条消息
+const rateLimits = new Map();
+const RATE_LIMIT_WINDOW = 1000;
+const RATE_LIMIT_MAX    = 30;
 
 function checkRateLimit(socketId) {
     const now = Date.now();
@@ -88,16 +81,52 @@ function checkRateLimit(socketId) {
     return entry.count <= RATE_LIMIT_MAX;
 }
 
+/** 序列化玩家胜负状态 */
+function serializePlayersStatus(room) {
+    const result = {};
+    for (const [sid, p] of room.players) {
+        result[sid] = { nickname: p.nickname, won: p.won, gameOver: p.gameOver };
+    }
+    return result;
+}
+
+/** 广播投票状态 + 检查是否全票通过 → 开始新轮 */
+function broadcastVoteStatus(roomId) {
+    const room = RoomManager.getRoom(roomId);
+    if (!room || !room.roundOver) return;
+
+    const status = RoomManager.getPlayAgainStatus(room);
+    io.to(roomId).emit('play-again-vote', {
+        voteCount: status.voteCount,
+        totalNeeded: status.totalNeeded,
+        seatCount: room.players.size,
+        maxSeats: RoomManager.MAX_SEATS
+    });
+
+    if (status.allAgreed) {
+        const newAnswer = pickRandomWord(room.wordLength);
+        RoomManager.resetRound(room, newAnswer);
+
+        io.to(roomId).emit('new-round', {
+            state: RoomManager.serializeRoom(room)
+        });
+
+        persistRoom(roomId);
+        console.log(`[新轮] 房间 ${roomId} 全员同意，新一轮开始`);
+    }
+}
+
 // ─── Socket 事件处理 ──────────────────────────────
 io.on('connection', (socket) => {
     console.log(`[连接] ${socket.id}`);
 
     // ── 创建房间 ──
-    socket.on('create-room', ({ nickname, wordLength }) => {
+    socket.on('create-room', ({ nickname, wordLength, mode }) => {
         if (!checkRateLimit(socket.id)) return;
         if (!nickname || typeof nickname !== 'string') return;
-        nickname = nickname.slice(0, 20); // 昵称最长 20 字符
+        nickname = nickname.slice(0, 20);
         wordLength = Number(wordLength) || 5;
+        if (!mode || !['versus', 'coop'].includes(mode)) mode = 'versus';
 
         const answer = pickRandomWord(wordLength);
         if (!answer) {
@@ -105,7 +134,7 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const result = RoomManager.createRoom(socket.id, nickname, wordLength, answer);
+        const result = RoomManager.createRoom(socket.id, nickname, wordLength, answer, mode);
         if (!result.ok) {
             socket.emit('room-error', { message: result.error });
             return;
@@ -114,10 +143,11 @@ io.on('connection', (socket) => {
         socket.join(result.room.id);
         socket.emit('room-created', {
             roomId: result.room.id,
-            state:  RoomManager.serializeRoom(result.room)
+            state:  RoomManager.serializeRoom(result.room),
+            role:   'player'
         });
         persistRoom(result.room.id);
-        console.log(`[房间] ${nickname} 创建房间 ${result.room.id} (${wordLength}字母)`);
+        console.log(`[房间] ${nickname} 创建房间 ${result.room.id} (${wordLength}字母, ${mode})`);
     });
 
     // ── 加入房间 ──
@@ -126,7 +156,7 @@ io.on('connection', (socket) => {
         if (!nickname || typeof nickname !== 'string') return;
         if (!roomId || typeof roomId !== 'string') return;
         nickname = nickname.slice(0, 20);
-        roomId = roomId.toUpperCase().slice(0, 6);
+        roomId = roomId.trim().slice(0, 4);
 
         const result = RoomManager.joinRoom(roomId, socket.id, nickname);
         if (!result.ok) {
@@ -135,18 +165,41 @@ io.on('connection', (socket) => {
         }
 
         socket.join(roomId);
-        // 通知加入者
         socket.emit('room-joined', {
             roomId,
-            state: RoomManager.serializeRoom(result.room)
+            state: RoomManager.serializeRoom(result.room),
+            role:  result.role
         });
-        // 通知房间其他人
+
+        // 通知房间内其他人
         socket.to(roomId).emit('player-joined', {
             socketId: socket.id,
-            nickname
+            nickname,
+            role: result.role
         });
+
         persistRoom(roomId);
-        console.log(`[房间] ${nickname} 加入房间 ${roomId}`);
+        console.log(`[房间] ${nickname} 以${result.role === 'player' ? '选手' : '观众'}身份加入房间 ${roomId}`);
+    });
+
+    // ── 房主开始游戏 ──
+    socket.on('start-game', ({ roomId }) => {
+        if (!checkRateLimit(socket.id)) return;
+        if (!roomId || typeof roomId !== 'string') return;
+
+        const result = RoomManager.startGame(roomId, socket.id);
+        if (!result.ok) {
+            socket.emit('room-error', { message: result.error });
+            return;
+        }
+
+        const room = RoomManager.getRoom(roomId);
+        io.to(roomId).emit('game-started', {
+            state: RoomManager.serializeRoom(room)
+        });
+
+        persistRoom(roomId);
+        console.log(`[开始] 房间 ${roomId} 游戏开始`);
     });
 
     // ── 离开房间 ──
@@ -160,23 +213,33 @@ io.on('connection', (socket) => {
         if (!checkRateLimit(socket.id)) return;
         if (!roomId || typeof roomId !== 'string') return;
         if (!Array.isArray(candidateRow)) return;
-        // 消息长度限制：candidateRow 最多 7 个字符
         if (candidateRow.length > 7) return;
 
         const room = RoomManager.getRoom(roomId);
         if (!room || !room.players.has(socket.id)) return;
 
-        // 更新玩家状态
         const player = room.players.get(socket.id);
         player.currentRow = row;
         player.candidateRow = candidateRow;
 
-        // 广播给房间其他人
-        socket.to(roomId).emit('box-updated', {
-            socketId: socket.id,
-            row,
-            candidateRow
-        });
+        // 给其他选手发（不含字母具体内容，只有是否有输入）
+        for (const [sid] of room.players) {
+            if (sid === socket.id) continue;
+            io.to(sid).emit('box-updated', {
+                socketId: socket.id,
+                row,
+                candidateRow: candidateRow.map(c => c ? '*' : '')
+            });
+        }
+
+        // 给观众发完整信息
+        for (const [sid] of room.spectators) {
+            io.to(sid).emit('box-updated', {
+                socketId: socket.id,
+                row,
+                candidateRow
+            });
+        }
     });
 
     // ── 提交猜测 ──
@@ -191,65 +254,178 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const player = room.players.get(socket.id);
-        if (!player) {
-            socket.emit('room-error', { message: '你不在此房间' });
-            return;
-        }
-        if (player.gameOver) {
-            socket.emit('room-error', { message: '你的游戏已结束' });
+        if (!room.gameStarted) {
+            socket.emit('room-error', { message: '游戏尚未开始' });
             return;
         }
 
-        // 消息长度限制
+        const player = room.players.get(socket.id);
+        if (!player) {
+            socket.emit('room-error', { message: '你不是选手' });
+            return;
+        }
+
+        if (room.roundOver) {
+            socket.emit('room-error', { message: '本轮已结束' });
+            return;
+        }
+
         guess = guess.toUpperCase().slice(0, room.wordLength);
         if (guess.length !== room.wordLength) {
             socket.emit('room-error', { message: '单词长度不正确' });
             return;
         }
 
-        // 验证是否为合法单词
         const ws = getWordSet(room.wordLength);
         if (!ws || !ws.validGuesses.has(guess.toLowerCase())) {
             socket.emit('room-error', { message: '不在单词列表中' });
             return;
         }
 
-        // 使用 Judge 评估
         const evaluation = Judge.evaluateGuess(guess, room.answer);
 
-        // 记录猜测
-        const recordResult = RoomManager.recordGuess(roomId, socket.id, guess, evaluation);
-        if (!recordResult.ok) {
-            socket.emit('room-error', { message: recordResult.error });
+        if (room.mode === 'coop') {
+            // ── 合作模式 ──
+            const coopResult = RoomManager.recordCoopGuess(roomId, socket.id, guess, evaluation);
+            if (!coopResult.ok) {
+                socket.emit('room-error', { message: coopResult.error });
+                return;
+            }
+
+            const coopEntry = room.coopHistory[room.coopHistory.length - 1];
+
+            // 广播给房间所有人（选手 + 观众）
+            io.to(roomId).emit('coop-guess', {
+                guess,
+                evaluation,
+                nickname: coopEntry.nickname,
+                socketId: socket.id,
+                row: room.coopHistory.length - 1,
+                won: coopResult.won,
+                roundOver: coopResult.roundOver,
+                answer: coopResult.roundOver && !coopResult.won ? room.answer : undefined
+            });
+
+            if (coopResult.roundOver) {
+                io.to(roomId).emit('round-over', {
+                    won: coopResult.won,
+                    answer: room.answer,
+                    mode: 'coop',
+                    players: serializePlayersStatus(room),
+                    seatCount: room.players.size,
+                    maxSeats: RoomManager.MAX_SEATS
+                });
+            }
+
+            persistRoom(roomId);
+            console.log(`[coop] ${player.nickname} 在房间 ${roomId} 猜 ${guess} → ${coopResult.won ? '✓' : (coopResult.roundOver ? '✗' : '...')}`);
+        } else {
+            // ── 对抗模式 ──
+            if (player.gameOver) {
+                socket.emit('room-error', { message: '你的游戏已结束' });
+                return;
+            }
+
+            const recordResult = RoomManager.recordGuess(roomId, socket.id, guess, evaluation);
+            if (!recordResult.ok) {
+                socket.emit('room-error', { message: recordResult.error });
+                return;
+            }
+
+            const won = evaluation.every(e => e === 'correct');
+            const hist = room.history.get(socket.id);
+            const isGameOver = won || hist.length >= 6;
+
+            // 给自己发完整结果
+            socket.emit('guess-result', {
+                evaluation,
+                won,
+                gameOver: isGameOver,
+                answer: isGameOver && !won ? room.answer : undefined
+            });
+
+            // 给其他选手发进度（不含猜测字母）
+            for (const [sid] of room.players) {
+                if (sid === socket.id) continue;
+                io.to(sid).emit('player-guess', {
+                    socketId: socket.id,
+                    evaluation,
+                    row: hist.length - 1,
+                    won,
+                    gameOver: isGameOver
+                });
+            }
+
+            // 给观众发完整信息（含猜测字母）
+            for (const [sid] of room.spectators) {
+                io.to(sid).emit('spectator-guess', {
+                    socketId: socket.id,
+                    nickname: player.nickname,
+                    guess,
+                    evaluation,
+                    row: hist.length - 1,
+                    won,
+                    gameOver: isGameOver
+                });
+            }
+
+            // 检查全局结束
+            if (RoomManager.checkVersusRoundOver(room)) {
+                io.to(roomId).emit('round-over', {
+                    won: false,
+                    answer: room.answer,
+                    mode: 'versus',
+                    players: serializePlayersStatus(room),
+                    seatCount: room.players.size,
+                    maxSeats: RoomManager.MAX_SEATS
+                });
+            }
+
+            persistRoom(roomId);
+            console.log(`[versus] ${player.nickname} 在房间 ${roomId} 猜 ${guess} → ${won ? '✓' : (isGameOver ? '✗' : '...')}`);
+        }
+    });
+
+    // ── 投票再来一局 ──
+    socket.on('vote-play-again', ({ roomId }) => {
+        if (!checkRateLimit(socket.id)) return;
+        if (!roomId || typeof roomId !== 'string') return;
+
+        const result = RoomManager.votePlayAgain(roomId, socket.id);
+        if (!result.ok) {
+            socket.emit('room-error', { message: result.error });
             return;
         }
 
-        // 判断结果
-        const won = evaluation.every(e => e === 'correct');
-        const hist = room.history.get(socket.id);
-        const isGameOver = won || hist.length >= 6;
+        broadcastVoteStatus(roomId);
+    });
 
-        // 发送结果给提交者
-        socket.emit('guess-result', {
-            evaluation,
-            won,
-            gameOver: isGameOver,
-            answer: isGameOver && !won ? room.answer : undefined
+    // ── 观众加入选手席 ──
+    socket.on('join-seat', ({ roomId }) => {
+        if (!checkRateLimit(socket.id)) return;
+        if (!roomId || typeof roomId !== 'string') return;
+
+        const result = RoomManager.joinSeat(roomId, socket.id);
+        if (!result.ok) {
+            socket.emit('room-error', { message: result.error });
+            return;
+        }
+
+        const room = RoomManager.getRoom(roomId);
+        // 通知自己角色变更
+        socket.emit('role-changed', {
+            role: 'player',
+            state: RoomManager.serializeRoom(room)
         });
 
-        // 广播给房间其他人
-        socket.to(roomId).emit('player-guess', {
+        // 通知房间内其他人
+        socket.to(roomId).emit('spectator-to-player', {
             socketId: socket.id,
-            guess,
-            evaluation,
-            row: hist.length - 1,
-            won,
-            gameOver: isGameOver
+            nickname: result.nickname
         });
 
         persistRoom(roomId);
-        console.log(`[猜测] ${player.nickname} 在房间 ${roomId} 猜 ${guess} → ${won ? '✓' : (isGameOver ? '✗' : '...')}`);
+        console.log(`[选手席] ${result.nickname} 从观众转为选手 (房间 ${roomId})`);
     });
 
     // ── 重连房间 ──
@@ -258,49 +434,55 @@ io.on('connection', (socket) => {
         if (!roomId || typeof roomId !== 'string') return;
         if (!nickname || typeof nickname !== 'string') return;
         nickname = nickname.slice(0, 20);
-        roomId = roomId.toUpperCase().slice(0, 6);
+        roomId = roomId.trim().slice(0, 4);
 
         const result = RoomManager.rejoinRoom(roomId, socket.id, nickname);
         if (!result.ok) {
-            // 重连失败，尝试普通加入
             socket.emit('rejoin-failed', { message: result.error, roomId });
             return;
         }
 
         socket.join(roomId);
-
-        // 发送完整房间状态
         const state = RoomManager.serializeRoom(result.room);
-        // 附加自己的历史（用于恢复棋盘）
-        const myHistory = result.room.history.get(socket.id) || [];
+        const myHistory = result.role === 'player'
+            ? (result.room.history.get(socket.id) || [])
+            : [];
+
         socket.emit('room-rejoined', {
             roomId,
             state,
-            myHistory
+            myHistory,
+            role: result.role
         });
 
-        // 通知其他玩家
         socket.to(roomId).emit('player-reconnected', {
             socketId: socket.id,
             oldSocketId: result.oldSocketId,
-            nickname
+            nickname,
+            role: result.role
         });
 
         persistRoom(roomId);
-        console.log(`[重连] ${nickname} 重连到房间 ${roomId}`);
+        console.log(`[重连] ${nickname} 以${result.role}身份重连到房间 ${roomId}`);
     });
 
     // ── 断开连接 ──
     socket.on('disconnect', () => {
         const roomId = RoomManager.findRoomBySocket(socket.id);
         if (roomId) {
-            // 标记为断线而非立即移除
+            const room = RoomManager.getRoom(roomId);
+            const wasRoundOver = room && room.roundOver;
+
             const dcResult = RoomManager.disconnectPlayer(roomId, socket.id, (rid, sid, nick) => {
-                // 超时回调：通知房间玩家已永久离开
                 io.to(rid).emit('player-left', {
                     socketId: sid,
                     nickname: nick
                 });
+                // 如果在投票阶段，断线超时移除后更新投票
+                const r = RoomManager.getRoom(rid);
+                if (r && r.roundOver) {
+                    broadcastVoteStatus(rid);
+                }
                 persistRoom(rid);
                 console.log(`[超时] ${nick} 在房间 ${rid} 断线超时，已移除`);
             });
@@ -308,8 +490,15 @@ io.on('connection', (socket) => {
             if (dcResult.ok) {
                 socket.to(roomId).emit('player-disconnected', {
                     socketId: socket.id,
-                    nickname: dcResult.nickname
+                    nickname: dcResult.nickname,
+                    role: dcResult.role
                 });
+
+                // 如果在投票阶段，断线时实时更新投票（断线者不计入总数）
+                if (wasRoundOver) {
+                    broadcastVoteStatus(roomId);
+                }
+
                 persistRoom(roomId);
             }
         }
@@ -319,12 +508,15 @@ io.on('connection', (socket) => {
 });
 
 /** 处理离开房间 */
-function handleLeaveRoom(socket, roomId, isDisconnect = false) {
+function handleLeaveRoom(socket, roomId) {
     const room = RoomManager.getRoom(roomId);
     if (!room) return;
 
+    const role = RoomManager.getRole(room, socket.id);
     const player = room.players.get(socket.id);
-    const nickname = player ? player.nickname : '未知';
+    const spec = room.spectators.get(socket.id);
+    const nickname = player ? player.nickname : (spec ? spec.nickname : '未知');
+    const wasRoundOver = room.roundOver;
 
     const result = RoomManager.leaveRoom(roomId, socket.id);
     if (!result.ok) return;
@@ -332,15 +524,20 @@ function handleLeaveRoom(socket, roomId, isDisconnect = false) {
     socket.leave(roomId);
 
     if (!result.isEmpty) {
-        const eventName = isDisconnect ? 'player-disconnected' : 'player-left';
-        io.to(roomId).emit(eventName, {
+        io.to(roomId).emit('player-left', {
             socketId: socket.id,
             nickname,
-            newHostId: result.newHostId
+            newHostId: result.newHostId,
+            wasPlayer: result.wasPlayer
         });
+
+        // 如果在投票阶段，选手离开后更新投票
+        if (wasRoundOver && result.wasPlayer) {
+            broadcastVoteStatus(roomId);
+        }
     }
     persistRoom(roomId);
-    console.log(`[房间] ${nickname} ${isDisconnect ? '断线离开' : '离开'}房间 ${roomId}`);
+    console.log(`[房间] ${nickname} 离开房间 ${roomId}`);
 }
 
 // ─── 启动 ─────────────────────────────────────────
