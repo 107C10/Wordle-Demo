@@ -136,6 +136,36 @@ function joinSeat(roomId, socketId) {
     return { ok: true, nickname: spec.nickname };
 }
 
+/** 选手退回观众席（仅在回合结束后或未开始时可用） */
+function leaveSeat(roomId, socketId) {
+    const room = rooms.get(roomId);
+    if (!room) return { ok: false, error: '房间不存在' };
+    if (!room.players.has(socketId)) return { ok: false, error: '你不是选手' };
+    if (room.gameStarted && !room.roundOver) return { ok: false, error: '游戏进行中，无法切换身份' };
+
+    const player = room.players.get(socketId);
+    room.players.delete(socketId);
+    room.history.delete(socketId);
+    room.playAgainVotes.delete(socketId);
+    room.spectators.set(socketId, { nickname: player.nickname, disconnected: false });
+
+    // 如果退出的是房主，转移房主
+    if (room.hostId === socketId) {
+        let newHostId = null;
+        for (const [sid, p] of room.players) {
+            if (!p.disconnected) { newHostId = sid; break; }
+        }
+        if (!newHostId) {
+            for (const [sid, s] of room.spectators) {
+                if (!s.disconnected) { newHostId = sid; break; }
+            }
+        }
+        if (newHostId) room.hostId = newHostId;
+    }
+
+    return { ok: true, nickname: player.nickname };
+}
+
 function leaveRoom(roomId, socketId) {
     const room = rooms.get(roomId);
     if (!room) return { ok: false, isEmpty: true };
@@ -472,7 +502,7 @@ function rejoinRoom(roomId, newSocketId, nickname) {
 
 module.exports = {
     createRoom, joinRoom, leaveRoom, getRoom, findRoomBySocket, getRole,
-    startGame, joinSeat,
+    startGame, joinSeat, leaveSeat,
     recordGuess, recordCoopGuess, checkVersusRoundOver,
     votePlayAgain, resetRound, getPlayAgainStatus,
     serializeRoom, disconnectPlayer, rejoinRoom,

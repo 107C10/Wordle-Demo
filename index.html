@@ -103,7 +103,7 @@
             <h2>设置</h2>
 
             <!-- Word Length -->
-            <div class="setting-item">
+            <div class="setting-item" id="setting-word-length">
                 <div class="setting-info">
                     <span class="setting-label">Word Length</span>
                     <span class="setting-desc">选择单词字母数量</span>
@@ -116,7 +116,7 @@
             </div>
 
             <!-- Dark Theme -->
-            <div class="setting-item">
+            <div class="setting-item" id="setting-dark-theme">
                 <div class="setting-info">
                     <span class="setting-label">Dark Theme</span>
                     <span class="setting-desc">深色主题</span>
@@ -128,7 +128,7 @@
             </div>
 
             <!-- Hard Mode -->
-            <div class="setting-item">
+            <div class="setting-item" id="setting-hard-mode">
                 <div class="setting-info">
                     <span class="setting-label">Hard Mode</span>
                     <span class="setting-desc">Any revealed hints must be used in subsequent guesses</span>
@@ -140,7 +140,7 @@
             </div>
 
             <!-- Custom Word -->
-            <div class="setting-item setting-item-col">
+            <div class="setting-item setting-item-col" id="setting-custom-word">
                 <div class="setting-info">
                     <span class="setting-label">Custom Word</span>
                     <span class="setting-desc">Type in your own word and let your friends guess!</span>
@@ -152,12 +152,21 @@
             </div>
 
             <!-- Multiplayer -->
-            <div class="setting-item">
+            <div class="setting-item" id="setting-multiplayer">
                 <div class="setting-info">
                     <span class="setting-label">Multiplayer</span>
                     <span class="setting-desc">创建或加入房间，与好友在线对战</span>
                 </div>
                 <button id="multiplayer-btn" class="btn-primary">多人游戏</button>
+            </div>
+
+            <!-- 退出房间（多人游戏时显示） -->
+            <div class="setting-item hidden" id="setting-leave-room">
+                <div class="setting-info">
+                    <span class="setting-label" id="setting-leave-label">退出游戏</span>
+                    <span class="setting-desc" id="setting-leave-desc">离开当前房间</span>
+                </div>
+                <button id="settings-leave-btn" class="btn-primary" style="background-color: #e74c3c;">退出</button>
             </div>
         </div>
     </div>
@@ -262,13 +271,12 @@
 
     <!-- 房间信息栏（在房间中时显示） -->
     <div id="room-info" class="room-info hidden">
+        <span class="room-mode-tag" id="room-mode-display"></span>
         <span class="room-code-tag">房间 <strong id="room-code-display"></strong></span>
         <button id="room-copy-btn" class="btn-room-copy" title="复制房间码">📋</button>
-        <span class="room-mode-tag" id="room-mode-display"></span>
-        <span class="room-player-count" id="room-player-count">选手 1/4</span>
-        <span class="room-role-tag" id="room-role-display">选手</span>
+        <span class="room-player-count" id="room-player-count">玩家 1/4</span>
+        <button id="room-role-toggle" class="btn-room-role" title="切换身份">选手</button>
         <button id="room-start-btn" class="btn-room-start hidden">开始游戏</button>
-        <button id="room-leave-btn" class="btn-room-leave">退出</button>
     </div>
 
     <!-- 等待开始提示 -->
@@ -291,8 +299,8 @@
             </div>
             <!-- 观众按钮 -->
             <div id="play-again-spectator-actions" class="play-again-actions hidden">
-                <button id="play-again-join-seat-btn" class="play-again-action-btn play-again-primary">加入选手席</button>
-                <button id="play-again-spectator-leave-btn" class="play-again-action-btn play-again-secondary">退出房间</button>
+                <button id="play-again-join-seat-btn" class="play-again-action-btn play-again-primary">参加游戏</button>
+                <button id="play-again-spectator-leave-btn" class="play-again-action-btn play-again-secondary">退出观战</button>
                 <div id="play-again-seat-info" class="play-again-seat-info"></div>
             </div>
             <div id="play-again-status" class="play-again-status"></div>

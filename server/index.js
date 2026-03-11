@@ -189,9 +189,26 @@ io.on('connection', (socket) => {
     });
 
     // ── 房主开始游戏 ──
-    socket.on('start-game', ({ roomId }) => {
+    socket.on('start-game', ({ roomId, customWord }) => {
         if (!checkRateLimit(socket.id)) return;
         if (!roomId || typeof roomId !== 'string') return;
+
+        // 合作模式支持自定义单词
+        if (customWord && typeof customWord === 'string') {
+            const room = RoomManager.getRoom(roomId);
+            if (room && room.mode === 'coop' && room.hostId === socket.id) {
+                customWord = customWord.toUpperCase().slice(0, room.wordLength);
+                if (customWord.length === room.wordLength) {
+                    const ws = getWordSet(room.wordLength);
+                    if (ws && ws.validGuesses.has(customWord.toLowerCase())) {
+                        room.answer = customWord;
+                    } else {
+                        socket.emit('room-error', { message: '该单词不在词库中' });
+                        return;
+                    }
+                }
+            }
+        }
 
         const result = RoomManager.startGame(roomId, socket.id);
         if (!result.ok) {
@@ -205,7 +222,7 @@ io.on('connection', (socket) => {
         });
 
         persistRoom(roomId);
-        console.log(`[开始] 房间 ${roomId} 游戏开始`);
+        console.log(`[开始] 房间 ${roomId} 游戏开始${customWord ? ' (自定义单词)' : ''}`);
     });
 
     // ── 离开房间 ──
@@ -435,6 +452,34 @@ io.on('connection', (socket) => {
 
         persistRoom(roomId);
         console.log(`[选手席] ${result.nickname} 从观众转为选手 (房间 ${roomId})`);
+    });
+
+    // ── 选手退回观众席 ──
+    socket.on('leave-seat', ({ roomId }) => {
+        if (!checkRateLimit(socket.id)) return;
+        if (!roomId || typeof roomId !== 'string') return;
+
+        const result = RoomManager.leaveSeat(roomId, socket.id);
+        if (!result.ok) {
+            socket.emit('room-error', { message: result.error });
+            return;
+        }
+
+        const room = RoomManager.getRoom(roomId);
+        // 通知自己角色变更
+        socket.emit('role-changed', {
+            role: 'spectator',
+            state: RoomManager.serializeRoom(room)
+        });
+
+        // 通知房间内其他人
+        socket.to(roomId).emit('player-to-spectator', {
+            socketId: socket.id,
+            nickname: result.nickname
+        });
+
+        persistRoom(roomId);
+        console.log(`[观众席] ${result.nickname} 从选手转为观众 (房间 ${roomId})`);
     });
 
     // ── 重连房间 ──

@@ -34,8 +34,7 @@ const Multiplayer = (function () {
     const roomCopyBtn       = document.getElementById('room-copy-btn');
     const roomPlayerCount   = document.getElementById('room-player-count');
     const roomModeDisplay   = document.getElementById('room-mode-display');
-    const roomRoleDisplay   = document.getElementById('room-role-display');
-    const roomLeaveBtn      = document.getElementById('room-leave-btn');
+    const roomRoleToggle    = document.getElementById('room-role-toggle');
     const roomStartBtn      = document.getElementById('room-start-btn');
     const multiplayerBtn    = document.getElementById('multiplayer-btn');
     const opponentsContainer = document.getElementById('opponents-container');
@@ -159,8 +158,21 @@ const Multiplayer = (function () {
             });
         }
 
-        // 退出房间
-        roomLeaveBtn.addEventListener('click', leaveRoom);
+        // 角色切换按钮
+        if (roomRoleToggle) {
+            roomRoleToggle.addEventListener('click', () => {
+                if (!currentRoomId || !socket) return;
+                if (roomGameStarted && !gameOver) {
+                    showMessage('游戏进行中，无法切换身份', 2000);
+                    return;
+                }
+                if (myRole === 'player') {
+                    socket.emit('leave-seat', { roomId: currentRoomId });
+                } else {
+                    socket.emit('join-seat', { roomId: currentRoomId });
+                }
+            });
+        }
 
         // 复制房间码
         if (roomCopyBtn) {
@@ -212,6 +224,16 @@ const Multiplayer = (function () {
             playAgainJoinSeatBtn.addEventListener('click', () => {
                 if (!currentRoomId || !socket) return;
                 socket.emit('join-seat', { roomId: currentRoomId });
+            });
+        }
+
+        // 设置里的退出按钮
+        const settingsLeaveBtn = document.getElementById('settings-leave-btn');
+        if (settingsLeaveBtn) {
+            settingsLeaveBtn.addEventListener('click', () => {
+                const settingsModal = document.getElementById('settings-modal');
+                if (settingsModal) settingsModal.classList.add('hidden');
+                leaveRoom();
             });
         }
 
@@ -290,6 +312,7 @@ const Multiplayer = (function () {
         socket.on('game-started', onGameStarted);
         socket.on('role-changed', onRoleChanged);
         socket.on('spectator-to-player', onSpectatorToPlayer);
+        socket.on('player-to-spectator', onPlayerToSpectator);
 
         // ── 游戏事件 ──
         socket.on('box-updated', onBoxUpdated);
@@ -422,9 +445,55 @@ const Multiplayer = (function () {
             // 重建对手面板（coop 模式会跳过）
             rebuildOpponents(state);
             updateRoleDisplay();
+            setHostState(state);
+            updateStartButton();
+            hidePlayAgainUI();
             showMessage('你已成为选手！', 2000);
+        } else {
+            // 从选手变成观众
+            resetGameState();
+            createBoard();
+            resetKeyboard();
+            targetWord = '';
+            gameOver = false;
+
+            if (roomMode === 'coop') {
+                // 合作模式观众：恢复共享棋盘
+                if (state.coopHistory && state.coopHistory.length > 0) {
+                    for (let r = 0; r < state.coopHistory.length; r++) {
+                        const { guess, evaluation, nickname: guesser } = state.coopHistory[r];
+                        applyCoopRow(r, guess, evaluation, guesser);
+                    }
+                    currentRow = state.coopHistory.length;
+                    currentCol = 0;
+                }
+            } else {
+                // 对抗模式观众：进入观战模式
+                setupSpectatorMode(state);
+            }
+
+            rebuildOpponents(state);
+            updateRoleDisplay();
+            setHostState(state);
+            updateStartButton();
+            hidePlayAgainUI();
+            showMessage('你已成为观众', 2000);
+        }
+        updatePlayerCount(state);
+    }
+
+    function onPlayerToSpectator({ socketId, nickname }) {
+        // 某个选手变成了观众
+        if (roomMode === 'coop') {
+            coopPlayerCount = Math.max(0, coopPlayerCount - 1);
+        } else {
+            // 从对手面板中移除
+            const opp = opponents[socketId];
+            if (opp && opp.card) opp.card.remove();
+            delete opponents[socketId];
         }
         updatePlayerCount();
+        updateStartButton();
     }
 
     function onSpectatorToPlayer({ socketId, nickname }) {
@@ -679,8 +748,8 @@ const Multiplayer = (function () {
     }
 
     function updateRoleDisplay() {
-        if (roomRoleDisplay) {
-            roomRoleDisplay.textContent = myRole === 'spectator' ? '观众' : '选手';
+        if (roomRoleToggle) {
+            roomRoleToggle.textContent = myRole === 'spectator' ? '观众' : '选手';
         }
     }
 
@@ -887,7 +956,7 @@ const Multiplayer = (function () {
         } else {
             playerCount = Object.keys(opponents).length + (myRole === 'player' ? 1 : 0);
         }
-        const label = `选手 ${playerCount}/4`;
+        const label = `玩家 ${playerCount}/4`;
         roomPlayerCount.textContent = label;
     }
 
@@ -1165,15 +1234,15 @@ const Multiplayer = (function () {
 
         // 根据角色显示不同按钮
         if (myRole === 'player') {
-            if (playAgainPlayerActions) playAgainPlayerActions.style.display = 'flex';
-            if (playAgainSpectatorActions) playAgainSpectatorActions.style.display = 'none';
+            if (playAgainPlayerActions) playAgainPlayerActions.classList.remove('hidden');
+            if (playAgainSpectatorActions) playAgainSpectatorActions.classList.add('hidden');
             if (playAgainBtn) {
                 playAgainBtn.disabled = false;
                 playAgainBtn.textContent = '再来一局';
             }
         } else {
-            if (playAgainPlayerActions) playAgainPlayerActions.style.display = 'none';
-            if (playAgainSpectatorActions) playAgainSpectatorActions.style.display = 'flex';
+            if (playAgainPlayerActions) playAgainPlayerActions.classList.add('hidden');
+            if (playAgainSpectatorActions) playAgainSpectatorActions.classList.remove('hidden');
             // 显示席位信息
             const seatInfo = document.getElementById('play-again-seat-info');
             if (seatInfo) {
@@ -1214,6 +1283,65 @@ const Multiplayer = (function () {
         });
     }
 
+    // ─── 合作模式自定义单词 ─────────────────────────
+    function startCustomWord(word) {
+        if (!socket || !currentRoomId) return;
+        socket.emit('start-game', { roomId: currentRoomId, customWord: word });
+    }
+
+    // ─── 设置面板多人模式适配 ───────────────────────
+    function updateSettingsUI() {
+        const settingWordLength = document.getElementById('setting-word-length');
+        const settingDarkTheme  = document.getElementById('setting-dark-theme');
+        const settingHardMode   = document.getElementById('setting-hard-mode');
+        const settingCustomWord = document.getElementById('setting-custom-word');
+        const settingMultiplayer = document.getElementById('setting-multiplayer');
+        const settingLeaveRoom  = document.getElementById('setting-leave-room');
+        const settingLeaveLabel = document.getElementById('setting-leave-label');
+        const settingLeaveDesc  = document.getElementById('setting-leave-desc');
+
+        if (!currentRoomId) {
+            // 单机模式：显示所有设置项，隐藏退出
+            if (settingWordLength) settingWordLength.classList.remove('hidden');
+            if (settingHardMode) settingHardMode.classList.remove('hidden');
+            if (settingCustomWord) settingCustomWord.classList.remove('hidden');
+            if (settingMultiplayer) settingMultiplayer.classList.remove('hidden');
+            if (settingLeaveRoom) settingLeaveRoom.classList.add('hidden');
+            return;
+        }
+
+        // 多人模式
+        const host = isHost();
+
+        // Word Length：多人里不可改
+        if (settingWordLength) settingWordLength.classList.add('hidden');
+
+        // Dark Theme：始终显示
+        // (settingDarkTheme always visible)
+
+        // Hard Mode：仅房主可设
+        if (settingHardMode) {
+            settingHardMode.classList.toggle('hidden', !host);
+        }
+
+        // Custom Word：仅合作模式房主可用
+        if (settingCustomWord) {
+            settingCustomWord.classList.toggle('hidden', !(host && roomMode === 'coop'));
+        }
+
+        // Multiplayer 入口：多人模式里隐藏（已在房间中）
+        if (settingMultiplayer) settingMultiplayer.classList.add('hidden');
+
+        // 退出按钮：多人模式里显示
+        if (settingLeaveRoom) settingLeaveRoom.classList.remove('hidden');
+        if (settingLeaveLabel) {
+            settingLeaveLabel.textContent = myRole === 'spectator' ? '退出观战' : '退出游戏';
+        }
+        if (settingLeaveDesc) {
+            settingLeaveDesc.textContent = '离开当前房间，返回单机模式';
+        }
+    }
+
     // ─── 启动 ─────────────────────────────────────
     init();
 
@@ -1221,6 +1349,8 @@ const Multiplayer = (function () {
         broadcastBox,
         submitGuess,
         leaveRoom,
+        updateSettingsUI,
+        startCustomWord,
         get roomId() { return currentRoomId; },
         get connected() { return socket && socket.connected; },
         get mode() { return roomMode; },

@@ -567,6 +567,9 @@ function bindModalEvents() {
     });
 
     settingsBtn.addEventListener('click', () => {
+        if (typeof Multiplayer !== 'undefined' && Multiplayer.updateSettingsUI) {
+            Multiplayer.updateSettingsUI();
+        }
         settingsModal.classList.remove('hidden');
     });
     settingsClose.addEventListener('click', () => {
@@ -668,7 +671,13 @@ function startCustomWord() {
     settingsModal.classList.add('hidden');
     customWordInput.value = '';
 
-    // 用自定义单词重新开始游戏
+    // 多人合作模式：发送自定义单词到服务器开始游戏
+    if (isMultiplayer && typeof Multiplayer !== 'undefined' && Multiplayer.roomId && Multiplayer.mode === 'coop') {
+        Multiplayer.startCustomWord(word);
+        return;
+    }
+
+    // 单机模式：用自定义单词重新开始游戏
     restartGame(word);
     showMessage('Custom Word 模式已开始！', 1500);
 }
