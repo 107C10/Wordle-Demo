@@ -1064,6 +1064,24 @@ body {
     flex: 1;
 }
 
+.btn-icon {
+    background: none;
+    border: 1px solid var(--color-header-border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: var(--color-text);
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-icon:hover {
+    background: var(--color-header-border);
+}
+
 .room-divider {
     height: 1px;
     background: var(--color-header-border);
@@ -1232,6 +1250,28 @@ body.multiplayer-active #game {
     padding: 0 8px;
 }
 
+/* 合作模式：居中布局（和单机一样），无对手面板 */
+body.coop-mode.multiplayer-active #game {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 500px;
+    gap: 0;
+    padding: 0;
+    overflow: visible;
+}
+
+body.coop-mode.multiplayer-active #board-container {
+    flex-grow: 1;
+    flex-shrink: 1;
+    overflow: visible;
+}
+
+body.coop-mode.multiplayer-active #keyboard {
+    flex-basis: auto;
+}
+
 body.multiplayer-active #board-container {
     flex-shrink: 0;
     flex-grow: 0;
@@ -1369,13 +1409,27 @@ body.multiplayer-active #message-container {
    =========================== */
 .coop-guesser-tag {
     position: absolute;
-    right: -60px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.6rem;
-    color: var(--color-absent);
+    font-size: 0.75rem;
     white-space: nowrap;
-    font-weight: 600;
+    font-weight: 700;
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+}
+
+.coop-tag-left {
+    right: calc(100% + 8px);
+    text-align: right;
+    color: var(--color-correct);
+}
+
+.coop-tag-right {
+    left: calc(100% + 8px);
+    text-align: left;
+    color: var(--color-present);
 }
 
 #board .row {
@@ -1421,6 +1475,45 @@ body.multiplayer-active #message-container {
     font-size: 1rem;
 }
 
+.play-again-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.play-again-action-btn {
+    padding: 12px 28px;
+    font-size: 1rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.2s;
+    min-width: 120px;
+    text-align: center;
+}
+
+.play-again-action-btn:hover {
+    opacity: 0.85;
+}
+
+.play-again-action-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.play-again-primary {
+    background-color: var(--color-correct);
+    color: #ffffff;
+}
+
+.play-again-secondary {
+    background-color: var(--color-absent);
+    color: #ffffff;
+}
+
 .play-again-status {
     margin-top: 12px;
     font-size: 0.85rem;
@@ -1449,8 +1542,8 @@ body.multiplayer-active #message-container {
         height: 8px;
     }
     .coop-guesser-tag {
-        right: -50px;
-        font-size: 0.5rem;
+        font-size: 0.6rem;
+        max-width: 50px;
     }
 }
 
@@ -1471,6 +1564,14 @@ body.multiplayer-active .solver-panel {
     right: 8px;
     transform: none;
     animation: slideDownRight 0.2s ease-out;
+}
+
+/* 合作模式 solver 恢复居中 */
+body.coop-mode.multiplayer-active .solver-panel {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    animation: slideDown 0.2s ease-out;
 }
 
 @keyframes slideDownRight {

@@ -253,6 +253,7 @@
                 <h3>加入房间</h3>
                 <div class="room-join-row">
                     <input type="text" id="room-code-input" class="room-input room-code-field" maxlength="4" placeholder="4位房间码" autocomplete="off">
+                    <button id="room-paste-btn" class="btn-icon" title="粘贴">📋</button>
                     <button id="room-join-btn" class="btn-primary">加入</button>
                 </div>
             </div>
@@ -284,14 +285,14 @@
         <div class="play-again-content">
             <div id="play-again-answer" class="play-again-answer"></div>
             <!-- 选手按钮 -->
-            <div id="play-again-player-actions">
-                <button id="play-again-btn" class="btn-primary play-again-btn">再来一局</button>
-                <button id="play-again-leave-btn" class="btn-secondary play-again-btn" style="margin-left:8px">退出房间</button>
+            <div id="play-again-player-actions" class="play-again-actions">
+                <button id="play-again-btn" class="play-again-action-btn play-again-primary">再来一局</button>
+                <button id="play-again-leave-btn" class="play-again-action-btn play-again-secondary">退出房间</button>
             </div>
             <!-- 观众按钮 -->
-            <div id="play-again-spectator-actions" class="hidden">
-                <button id="play-again-join-seat-btn" class="btn-primary play-again-btn">加入选手席</button>
-                <button id="play-again-spectator-leave-btn" class="btn-secondary play-again-btn" style="margin-left:8px">退出房间</button>
+            <div id="play-again-spectator-actions" class="play-again-actions hidden">
+                <button id="play-again-join-seat-btn" class="play-again-action-btn play-again-primary">加入选手席</button>
+                <button id="play-again-spectator-leave-btn" class="play-again-action-btn play-again-secondary">退出房间</button>
                 <div id="play-again-seat-info" class="play-again-seat-info"></div>
             </div>
             <div id="play-again-status" class="play-again-status"></div>

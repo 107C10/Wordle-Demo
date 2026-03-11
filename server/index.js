@@ -85,7 +85,13 @@ function checkRateLimit(socketId) {
 function serializePlayersStatus(room) {
     const result = {};
     for (const [sid, p] of room.players) {
-        result[sid] = { nickname: p.nickname, won: p.won, gameOver: p.gameOver };
+        const hist = room.history.get(sid);
+        result[sid] = {
+            nickname: p.nickname,
+            won: p.won,
+            gameOver: p.gameOver,
+            guessCount: hist ? hist.length : 0
+        };
     }
     return result;
 }
@@ -217,6 +223,9 @@ io.on('connection', (socket) => {
 
         const room = RoomManager.getRoom(roomId);
         if (!room || !room.players.has(socket.id)) return;
+
+        // 合作模式不需要广播候选框（共享棋盘，无对手面板）
+        if (room.mode === 'coop') return;
 
         const player = room.players.get(socket.id);
         player.currentRow = row;

@@ -17,6 +17,7 @@ const Multiplayer = (function () {
     let myHostId = null;            // 当前房主的 socketId
     let lastSeatCount = 0;          // 最近一次席位数
     let lastMaxSeats = 4;           // 最大席位数
+    let coopPlayerCount = 0;        // 合作模式选手人数
     let opponents = {};             // socketId -> { nickname, card, boardEl, statusEl, currentRow }
     let spectatorTarget = null;     // 观众当前查看的选手 socketId
     let playerHistories = {};       // socketId -> { nickname, guesses: [{guess, evaluation}] }
@@ -76,6 +77,8 @@ const Multiplayer = (function () {
             const settingsModal = document.getElementById('settings-modal');
             if (settingsModal) settingsModal.classList.add('hidden');
             syncWordLengthUI();
+            // 清空房间码（昵称保留）
+            if (roomCodeInput) roomCodeInput.value = '';
             roomModal.classList.remove('hidden');
         });
 
@@ -132,6 +135,29 @@ const Multiplayer = (function () {
             ensureConnected();
             socket.emit('join-room', { roomId: code, nickname: nick });
         });
+
+        // 房间码输入框 Enter 键加入
+        if (roomCodeInput) {
+            roomCodeInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    roomJoinBtn.click();
+                }
+            });
+        }
+
+        // 粘贴按钮
+        const pasteBtn = document.getElementById('room-paste-btn');
+        if (pasteBtn) {
+            pasteBtn.addEventListener('click', () => {
+                if (navigator.clipboard && navigator.clipboard.readText) {
+                    navigator.clipboard.readText().then(text => {
+                        const code = text.trim().slice(0, 4);
+                        if (code) roomCodeInput.value = code;
+                    }).catch(() => {});
+                }
+            });
+        }
 
         // 退出房间
         roomLeaveBtn.addEventListener('click', leaveRoom);
@@ -301,9 +327,12 @@ const Multiplayer = (function () {
         showMessage(`${nickname} 加入了房间${roleText}`, 2000);
 
         if (role === 'player') {
-            addOpponent(socketId, nickname);
+            if (roomMode === 'coop') {
+                coopPlayerCount++;
+            } else {
+                addOpponent(socketId, nickname);
+            }
         }
-        // 观众不在 opponents 面板显示（但计入总数）
         updatePlayerCount();
         updateStartButton();
     }
@@ -311,7 +340,11 @@ const Multiplayer = (function () {
     function onPlayerLeft({ socketId, nickname, newHostId, wasPlayer }) {
         showMessage(`${nickname} 离开了房间`, 2000);
         if (wasPlayer !== false) {
-            removeOpponent(socketId);
+            if (roomMode === 'coop') {
+                coopPlayerCount = Math.max(0, coopPlayerCount - 1);
+            } else {
+                removeOpponent(socketId);
+            }
         }
         // 更新房主
         if (newHostId) {
@@ -376,7 +409,17 @@ const Multiplayer = (function () {
             targetWord = '';
             gameOver = false;
 
-            // 重建对手面板
+            // 合作模式：恢复共享棋盘
+            if (roomMode === 'coop' && state.coopHistory && state.coopHistory.length > 0) {
+                for (let r = 0; r < state.coopHistory.length; r++) {
+                    const { guess, evaluation, nickname: guesser } = state.coopHistory[r];
+                    applyCoopRow(r, guess, evaluation, guesser);
+                }
+                currentRow = state.coopHistory.length;
+                currentCol = 0;
+            }
+
+            // 重建对手面板（coop 模式会跳过）
             rebuildOpponents(state);
             updateRoleDisplay();
             showMessage('你已成为选手！', 2000);
@@ -385,8 +428,12 @@ const Multiplayer = (function () {
     }
 
     function onSpectatorToPlayer({ socketId, nickname }) {
-        // 某个观众变成了选手 → 给他建面板
-        addOpponent(socketId, nickname);
+        // 某个观众变成了选手
+        if (roomMode === 'coop') {
+            coopPlayerCount++;
+        } else {
+            addOpponent(socketId, nickname);
+        }
         updatePlayerCount();
     }
 
@@ -442,15 +489,35 @@ const Multiplayer = (function () {
                 }
             }
         } else {
-            // 观众：恢复观战视角
-            setupSpectatorMode(state);
+            // 观众
+            if (roomMode === 'coop') {
+                // 合作模式观众：恢复共享棋盘（和选手看到的一样）
+                if (state.coopHistory && state.coopHistory.length > 0) {
+                    for (let r = 0; r < state.coopHistory.length; r++) {
+                        const { guess, evaluation, nickname: guesser } = state.coopHistory[r];
+                        applyCoopRow(r, guess, evaluation, guesser);
+                    }
+                    currentRow = state.coopHistory.length;
+                    currentCol = 0;
+                }
+            } else {
+                // 对抗模式观众：恢复观战视角
+                setupSpectatorMode(state);
+            }
         }
 
         // 显示房间 UI
         setHostState(state);
         showRoomUI(roomId, state);
 
-        // 重建对手面板
+        // 设置模式 class
+        if (roomMode === 'coop') {
+            document.body.classList.add('coop-mode');
+        } else {
+            document.body.classList.remove('coop-mode');
+        }
+
+        // 重建对手面板（coop 模式会跳过）
         rebuildOpponents(state);
 
         // 如果没开始，显示等待界面
@@ -478,6 +545,7 @@ const Multiplayer = (function () {
         isMultiplayer = false;
         spectatorTarget = null;
         playerHistories = {};
+        coopPlayerCount = 0;
 
         roomInfo.classList.add('hidden');
         opponentsContainer.classList.add('hidden');
@@ -487,7 +555,7 @@ const Multiplayer = (function () {
         hideWaitingMessage();
         hideSpectatorBar();
         hideStartButton();
-        document.body.classList.remove('multiplayer-active', 'spectator-mode');
+        document.body.classList.remove('multiplayer-active', 'spectator-mode', 'coop-mode');
         restartGame();
     }
 
@@ -512,13 +580,31 @@ const Multiplayer = (function () {
         setHostState(state);
         showRoomUI(roomId, state);
 
-        // 对手面板
-        opponentsContainer.classList.remove('hidden');
-        rebuildOpponents(state);
-
         document.body.classList.add('multiplayer-active');
 
-        if (myRole === 'spectator') {
+        if (roomMode === 'coop') {
+            // 合作模式：无对手面板，棋盘居中（和单机一样）
+            document.body.classList.add('coop-mode');
+            opponentsContainer.classList.add('hidden');
+            rebuildOpponents(state);
+
+            // 恢复已有的合作猜测历史（中途加入时）
+            if (state.coopHistory && state.coopHistory.length > 0) {
+                for (let r = 0; r < state.coopHistory.length; r++) {
+                    const { guess, evaluation, nickname: guesser } = state.coopHistory[r];
+                    applyCoopRow(r, guess, evaluation, guesser);
+                }
+                currentRow = state.coopHistory.length;
+                currentCol = 0;
+            }
+        } else {
+            document.body.classList.remove('coop-mode');
+            opponentsContainer.classList.remove('hidden');
+            rebuildOpponents(state);
+        }
+
+        if (myRole === 'spectator' && roomMode !== 'coop') {
+            // 对抗模式观众：切换观战视角
             setupSpectatorMode(state);
         }
 
@@ -526,12 +612,25 @@ const Multiplayer = (function () {
         if (!roomGameStarted) {
             showWaitingMessage();
         }
+
+        // 本轮已结束 → 显示 play again
+        if (state.roundOver) {
+            gameOver = true;
+            showPlayAgainUI(state.roundAnswer);
+        }
     }
 
     function rebuildOpponents(state) {
         opponentsContainer.innerHTML = '';
         opponents = {};
         playerHistories = {};
+
+        // 合作模式不需要对手面板，所有人共享一个棋盘
+        if (roomMode === 'coop') {
+            opponentsContainer.classList.add('hidden');
+            updatePlayerCount(state);
+            return;
+        }
 
         for (const [sid, player] of Object.entries(state.players)) {
             // 选手：其他选手是对手面板；观众：所有选手都是面板
@@ -596,7 +695,12 @@ const Multiplayer = (function () {
         if (!roomGameStarted && isHost()) {
             roomStartBtn.classList.remove('hidden');
             // 按钮禁用状态由选手人数控制
-            const playerCount = Object.keys(opponents).length + (myRole === 'player' ? 1 : 0);
+            let playerCount;
+            if (roomMode === 'coop') {
+                playerCount = coopPlayerCount;
+            } else {
+                playerCount = Object.keys(opponents).length + (myRole === 'player' ? 1 : 0);
+            }
             roomStartBtn.disabled = playerCount < 2;
         } else {
             roomStartBtn.classList.add('hidden');
@@ -773,8 +877,16 @@ const Multiplayer = (function () {
         }
     }
 
-    function updatePlayerCount() {
-        const playerCount = Object.keys(opponents).length + (myRole === 'player' ? 1 : 0);
+    function updatePlayerCount(state) {
+        let playerCount;
+        if (roomMode === 'coop') {
+            if (state && state.players) {
+                coopPlayerCount = Object.keys(state.players).length;
+            }
+            playerCount = coopPlayerCount;
+        } else {
+            playerCount = Object.keys(opponents).length + (myRole === 'player' ? 1 : 0);
+        }
         const label = `选手 ${playerCount}/4`;
         roomPlayerCount.textContent = label;
     }
@@ -941,13 +1053,20 @@ const Multiplayer = (function () {
 
         const boardRow = boardEl.children[row];
         if (boardRow) {
-            let tag = boardRow.querySelector('.coop-guesser-tag');
-            if (!tag) {
-                tag = document.createElement('span');
-                tag.classList.add('coop-guesser-tag');
-                boardRow.appendChild(tag);
+            // 移除旧标签
+            boardRow.querySelectorAll('.coop-guesser-tag').forEach(el => el.remove());
+
+            const isMe = socket && guesserNickname === myNickname;
+            const tag = document.createElement('span');
+            tag.classList.add('coop-guesser-tag');
+            if (isMe) {
+                tag.classList.add('coop-tag-left');
+                tag.textContent = '你';
+            } else {
+                tag.classList.add('coop-tag-right');
+                tag.textContent = guesserNickname;
             }
-            tag.textContent = guesserNickname;
+            boardRow.appendChild(tag);
         }
     }
 
@@ -974,7 +1093,12 @@ const Multiplayer = (function () {
                 for (const [sid, info] of Object.entries(players)) {
                     const isMe = sid === socket.id;
                     const name = isMe ? '你' : info.nickname;
-                    results.push(`${name}: ${info.won ? '✓' : '✗'}`);
+                    if (info.won) {
+                        results.push(`${name}: ✓`);
+                    } else {
+                        const gc = info.guessCount || 0;
+                        results.push(`${name}: ${gc > 0 ? gc + '/6' : '✗'}`);
+                    }
                 }
                 showMessage(results.join('   '), 5000);
             } else if (mode === 'coop' && players && socket) {
@@ -1021,11 +1145,11 @@ const Multiplayer = (function () {
         gameOver = false;
         isRevealing = false;
 
-        // 重建对手面板
+        // 重建对手面板（coop 模式会跳过）
         rebuildOpponents(state);
 
-        if (myRole === 'spectator') {
-            // 观众继续观战
+        if (myRole === 'spectator' && roomMode !== 'coop') {
+            // 对抗模式观众继续观战
             setupSpectatorMode(state);
         }
 
@@ -1041,7 +1165,7 @@ const Multiplayer = (function () {
 
         // 根据角色显示不同按钮
         if (myRole === 'player') {
-            if (playAgainPlayerActions) playAgainPlayerActions.style.display = '';
+            if (playAgainPlayerActions) playAgainPlayerActions.style.display = 'flex';
             if (playAgainSpectatorActions) playAgainSpectatorActions.style.display = 'none';
             if (playAgainBtn) {
                 playAgainBtn.disabled = false;
@@ -1049,7 +1173,7 @@ const Multiplayer = (function () {
             }
         } else {
             if (playAgainPlayerActions) playAgainPlayerActions.style.display = 'none';
-            if (playAgainSpectatorActions) playAgainSpectatorActions.style.display = '';
+            if (playAgainSpectatorActions) playAgainSpectatorActions.style.display = 'flex';
             // 显示席位信息
             const seatInfo = document.getElementById('play-again-seat-info');
             if (seatInfo) {
