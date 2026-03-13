@@ -1205,49 +1205,50 @@ body.multiplayer-active:not(.coop-mode) {
 
 body.multiplayer-active:not(.coop-mode) #game {
     display: grid;
-    grid-template-columns: clamp(90px, 20vw, 130px) 1fr;
+    width: min(500px, 100%);
+    margin: 0 auto;
+    grid-template-columns: 1fr auto auto 1fr;
+    justify-content: stretch;
+    column-gap: 0;
     grid-template-rows: 1fr auto;
-    max-width: 500px;
-    gap: 0;
-    padding: 0 clamp(4px, 1vw, 8px);
+    padding: 0;
+    box-sizing: border-box;
 }
 
+/* 确保棋盘容器紧贴内容，不产生额外边距 */
+body.multiplayer-active:not(.coop-mode) #board-container {
+    grid-column: 3;
+    width: fit-content;
+    justify-self: center; /* 确保棋盘本身在自己的格子内也是居中的 */
+}
+
+/* 调整侧边栏，让它也垂直对齐得更好看一些 */
 body.multiplayer-active:not(.coop-mode) .opponents-container {
-    grid-column: 1;
-    grid-row: 1;
-    align-self: stretch;
-    justify-content: space-evenly;
-    overflow-y: auto;
-    width: auto;
-    min-width: 0;
-    max-width: none;
-    max-height: none;
-    padding: clamp(6px, 1.5vw, 12px) clamp(3px, 0.8vw, 6px);
+    grid-column: 2;
+    width: fit-content;
+    justify-self: center;
+    align-self: center; /* 让左侧小面板与中间的大棋盘垂直对齐 */
+    align-items: center;
+    padding-block: 10px;
+    padding-inline: calc(clamp(10px, 5vw, 30px) / 2);
 }
 
 body.multiplayer-active:not(.coop-mode) .opponent-card {
-    width: 100%;
-    min-width: 0;
+    width: fit-content;
+    min-width: unset;
+    margin: 0 auto;
 }
 
 body.multiplayer-active:not(.coop-mode) .opponent-nickname {
     max-width: 100%;
 }
 
-body.multiplayer-active:not(.coop-mode) #board-container {
-    grid-column: 2;
-    grid-row: 1;
-    align-self: center;
-    justify-self: center;
-    min-height: 0;
-    overflow: hidden;
-    padding: clamp(6px, 1.5vw, 12px) 0;
-}
-
 body.multiplayer-active:not(.coop-mode) #keyboard {
-    grid-column: 1 / -1;
+    grid-column: 1 / 5;
     grid-row: 2;
-    max-width: none;
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
 }
 
 /* 合作模式：居中布局（和单机一样），无对手面板 */
@@ -1294,6 +1295,7 @@ body.multiplayer-active #message-container {
     max-height: calc(100vh - 200px);
     max-height: calc(100dvh - 200px);
     overflow-y: auto;
+    justify-self: center;
 }
 
 .opponents-container.hidden {
@@ -1304,13 +1306,15 @@ body.multiplayer-active #message-container {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: clamp(2px, 0.43vw, 3px);
-    padding: clamp(2px, 0.58vw, 4px);
+    gap: 2px;
+    padding: 4px;
     border: 1px solid var(--color-header-border);
-    border-radius: 6px;
+    border-radius: 4px;
     background: var(--color-bg);
-    min-width: clamp(40px, 8.6vw, 60px);
-    transition: border-color 0.2s;
+    width: fit-content;
+    min-width: unset;
+    margin: 0 auto;
+    transition: all 0.2s;
 }
 
 .opponent-card.spectator-clickable {
