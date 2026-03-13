@@ -123,14 +123,24 @@ function broadcastVoteStatus(roomId) {
 }
 
 // ─── Socket 事件处理 ──────────────────────────────
+
+/**
+ * 昵称消毒：只保留中英文、数字、下划线、短横线
+ */
+function sanitizeNickname(raw) {
+    if (!raw || typeof raw !== 'string') return null;
+    const cleaned = raw.replace(/[^a-zA-Z0-9\u4e00-\u9fff_\-]/g, '').slice(0, 20);
+    return cleaned || null;
+}
+
 io.on('connection', (socket) => {
     console.log(`[连接] ${socket.id}`);
 
     // ── 创建房间 ──
     socket.on('create-room', ({ nickname, wordLength, mode }) => {
         if (!checkRateLimit(socket.id)) return;
-        if (!nickname || typeof nickname !== 'string') return;
-        nickname = nickname.slice(0, 20);
+        nickname = sanitizeNickname(nickname);
+        if (!nickname) return;
         wordLength = Number(wordLength) || 5;
         if (!mode || !['versus', 'coop'].includes(mode)) mode = 'versus';
 
@@ -150,7 +160,8 @@ io.on('connection', (socket) => {
         socket.emit('room-created', {
             roomId: result.room.id,
             state:  RoomManager.serializeRoom(result.room),
-            role:   'player'
+            role:   'player',
+            token:  result.token
         });
         persistRoom(result.room.id);
         console.log(`[房间] ${nickname} 创建房间 ${result.room.id} (${wordLength}字母, ${mode})`);
@@ -159,9 +170,9 @@ io.on('connection', (socket) => {
     // ── 加入房间 ──
     socket.on('join-room', ({ roomId, nickname }) => {
         if (!checkRateLimit(socket.id)) return;
-        if (!nickname || typeof nickname !== 'string') return;
+        nickname = sanitizeNickname(nickname);
+        if (!nickname) return;
         if (!roomId || typeof roomId !== 'string') return;
-        nickname = nickname.slice(0, 20);
         roomId = roomId.trim().slice(0, 4);
 
         const result = RoomManager.joinRoom(roomId, socket.id, nickname);
@@ -174,7 +185,8 @@ io.on('connection', (socket) => {
         socket.emit('room-joined', {
             roomId,
             state: RoomManager.serializeRoom(result.room),
-            role:  result.role
+            role: result.role,
+            token: result.token
         });
 
         // 通知房间内其他人
@@ -268,6 +280,18 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ── 设置 Hard Mode ──
+    socket.on('set-hard-mode', ({ roomId, enabled }) => {
+        if (!checkRateLimit(socket.id)) return;
+        if (!roomId || typeof roomId !== 'string') return;
+        const result = RoomManager.setHardMode(roomId, socket.id, enabled);
+        if (!result.ok) {
+            socket.emit('room-error', { message: result.error });
+            return;
+        }
+        io.to(roomId).emit('hard-mode-changed', { enabled: !!enabled });
+    });
+
     // ── 提交猜测 ──
     socket.on('submit-guess', ({ roomId, guess }) => {
         if (!checkRateLimit(socket.id)) return;
@@ -306,6 +330,16 @@ io.on('connection', (socket) => {
         if (!ws || !ws.validGuesses.has(guess.toLowerCase())) {
             socket.emit('room-error', { message: '不在单词列表中' });
             return;
+        }
+
+        // Hard Mode 验证
+        if (room.hardMode) {
+            const history = room.mode === 'coop' ? room.coopHistory : (room.history.get(socket.id) || []);
+            const hardModeError = RoomManager.checkHardMode(history, guess);
+            if (hardModeError) {
+                socket.emit('room-error', { message: hardModeError });
+                return;
+            }
         }
 
         const evaluation = Judge.evaluateGuess(guess, room.answer);
@@ -483,14 +517,15 @@ io.on('connection', (socket) => {
     });
 
     // ── 重连房间 ──
-    socket.on('rejoin-room', ({ roomId, nickname }) => {
+    socket.on('rejoin-room', ({ roomId, nickname, token }) => {
         if (!checkRateLimit(socket.id)) return;
         if (!roomId || typeof roomId !== 'string') return;
-        if (!nickname || typeof nickname !== 'string') return;
-        nickname = nickname.slice(0, 20);
+        nickname = sanitizeNickname(nickname);
+        if (!nickname) return;
         roomId = roomId.trim().slice(0, 4);
+        if (token && typeof token !== 'string') token = null;
 
-        const result = RoomManager.rejoinRoom(roomId, socket.id, nickname);
+        const result = RoomManager.rejoinRoom(roomId, socket.id, nickname, token);
         if (!result.ok) {
             socket.emit('rejoin-failed', { message: result.error, roomId });
             return;
@@ -506,7 +541,8 @@ io.on('connection', (socket) => {
             roomId,
             state,
             myHistory,
-            role: result.role
+            role: result.role,
+            token: result.token
         });
 
         socket.to(roomId).emit('player-reconnected', {

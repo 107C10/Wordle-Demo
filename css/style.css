@@ -18,9 +18,10 @@
     --color-toast-bg: #1a1a1b;
     --color-toast-text: #ffffff;
 
-    --tile-size: 62px;
+    --tile-size: min(clamp(40px, 12.4vw, 62px), max(40px, calc((100vh - 260px) / 8)));
+    --tile-size: min(clamp(40px, 12.4vw, 62px), max(40px, calc((100dvh - 260px) / 8)));
     --tile-gap: 5px;
-    --tile-font-size: 2rem;
+    --tile-font-size: calc(var(--tile-size) * 0.52);
     --tile-font-weight: 700;
 }
 
@@ -60,6 +61,7 @@ body {
     flex-direction: column;
     align-items: center;
     height: 100vh;
+    height: 100dvh;
     overflow-x: hidden;
     overflow-y: auto;
     transition: background-color 0.3s, color 0.3s;
@@ -71,12 +73,12 @@ body {
 #header {
     width: 100%;
     max-width: 500px;
-    height: 50px;
+    height: clamp(40px, 10vw, 50px);
     display: flex;
     align-items: center;
     justify-content: space-between;
     border-bottom: 1px solid var(--color-header-border);
-    padding: 0 16px;
+    padding: 0 clamp(8px, 3.2vw, 16px);
     flex-shrink: 0;
 }
 
@@ -84,7 +86,7 @@ body {
 .header-right {
     display: flex;
     align-items: center;
-    width: 100px;
+    width: clamp(60px, 20vw, 100px);
     gap: 2px;
 }
 
@@ -93,7 +95,7 @@ body {
 }
 
 .header-center h1 {
-    font-size: 1.6rem;
+    font-size: clamp(1.1rem, 5.12vw, 1.6rem);
     font-weight: 700;
     letter-spacing: 0.1rem;
     text-transform: uppercase;
@@ -104,7 +106,7 @@ body {
     border: none;
     cursor: pointer;
     color: var(--color-text);
-    padding: 4px;
+    padding: clamp(2px, 0.8vw, 4px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -187,7 +189,7 @@ body {
     display: grid;
     grid-template-rows: repeat(6, 1fr);
     gap: var(--tile-gap);
-    padding: 10px;
+    padding: clamp(4px, 2vw, 10px);
 }
 
 .row {
@@ -286,16 +288,16 @@ body {
 #keyboard {
     width: 100%;
     max-width: 500px;
-    padding: 0 8px 8px;
+    padding: 0 clamp(4px, 1.6vw, 8px) clamp(4px, 1.6vw, 8px);
     flex-shrink: 0;
-    margin-bottom: 8px;
+    margin-bottom: clamp(2px, 1.6vw, 8px);
 }
 
 .keyboard-row {
     display: flex;
     justify-content: center;
-    gap: 6px;
-    margin-bottom: 6px;
+    gap: clamp(3px, 1.2vw, 6px);
+    margin-bottom: clamp(3px, 1.2vw, 6px);
     touch-action: manipulation;
 }
 
@@ -336,7 +338,7 @@ body {
 .key-wide {
     flex: 1.5;
     max-width: 65px;
-    font-size: 0.75rem;
+    font-size: clamp(0.65rem, 2.4vw, 0.75rem);
 }
 
 /* 键盘按键状态颜色 */
@@ -378,7 +380,7 @@ body {
 .modal-content {
     background-color: var(--color-modal-bg);
     border-radius: 8px;
-    padding: 32px;
+    padding: clamp(16px, 6.4vw, 32px);
     max-width: 400px;
     width: 90%;
     max-height: 80vh;
@@ -451,14 +453,10 @@ body {
 }
 
 /* ===========================
-   响应式适配
-   =========================== */
-
-/* ===========================
    设置面板
    =========================== */
 .settings-content {
-    padding: 24px 32px;
+    padding: clamp(16px, 4.8vw, 24px) clamp(16px, 6.4vw, 32px);
 }
 
 .setting-item {
@@ -628,10 +626,6 @@ body {
 .btn-primary:active {
     transform: scale(0.97);
 }
-
-/* ===========================
-   响应式适配（原有）
-   =========================== */
 
 /* ===========================
    Solver 面板
@@ -924,38 +918,6 @@ body {
     transform: scale(0.97);
 }
 
-/* ===========================   响应式适配
-   =========================== */
-@media (max-height: 700px) {
-    :root {
-        --tile-size: 52px;
-        --tile-font-size: 1.6rem;
-    }
-    .key {
-        height: 50px;
-    }
-}
-
-@media (max-height: 580px) {
-    :root {
-        --tile-size: 44px;
-        --tile-font-size: 1.3rem;
-    }
-    .key {
-        height: 44px;
-        font-size: 0.75rem;
-    }
-}
-
-@media (max-width: 360px) {
-    :root {
-        --tile-size: 50px;
-    }
-    .keyboard-row {
-        gap: 4px;
-    }
-}
-
 /* ===========================
    多人游戏 - 房间弹窗
    =========================== */
@@ -1097,12 +1059,13 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 6px 16px;
+    gap: clamp(4px, 1.6vw, 8px);
+    padding: clamp(3px, 1.2vw, 6px) clamp(8px, 3.2vw, 16px);
     background: var(--color-correct);
     color: #ffffff;
-    font-size: 0.85rem;
+    font-size: clamp(0.7rem, 2.72vw, 0.85rem);
     font-weight: 700;
+    flex-wrap: wrap;
 }
 
 .room-info.hidden {
@@ -1130,47 +1093,23 @@ body {
 
 .room-mode-tag {
     background: rgba(255,255,255,0.2);
-    padding: 1px 8px;
+    padding: 1px clamp(4px, 1.6vw, 8px);
     border-radius: 3px;
-    font-size: 0.75rem;
+    font-size: clamp(0.6rem, 2.4vw, 0.75rem);
 }
 
 .room-player-count {
     opacity: 0.85;
 }
 
-.btn-room-leave {
-    background: rgba(255,255,255,0.2);
-    border: 1px solid rgba(255,255,255,0.4);
-    color: #ffffff;
-    padding: 2px 10px;
-    border-radius: 4px;
-    font-family: inherit;
-    font-size: 0.8rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-.btn-room-leave:hover {
-    background: rgba(255,255,255,0.35);
-}
-
-.room-role-tag {
-    background: rgba(255,255,255,0.2);
-    padding: 1px 8px;
-    border-radius: 3px;
-    font-size: 0.75rem;
-}
-
 .btn-room-role {
     background: rgba(255,255,255,0.2);
     border: 1px solid rgba(255,255,255,0.4);
     color: #ffffff;
-    padding: 2px 10px;
+    padding: 2px clamp(6px, 2vw, 10px);
     border-radius: 4px;
     font-family: inherit;
-    font-size: 0.75rem;
+    font-size: clamp(0.6rem, 2.4vw, 0.75rem);
     font-weight: 700;
     cursor: pointer;
     transition: background 0.2s;
@@ -1184,10 +1123,10 @@ body {
     background: #ffffff;
     color: var(--color-correct);
     border: none;
-    padding: 2px 12px;
+    padding: 2px clamp(8px, 2.4vw, 12px);
     border-radius: 4px;
     font-family: inherit;
-    font-size: 0.8rem;
+    font-size: clamp(0.65rem, 2.56vw, 0.8rem);
     font-weight: 700;
     cursor: pointer;
     transition: opacity 0.2s;
@@ -1211,14 +1150,14 @@ body {
    =========================== */
 .waiting-message {
     width: 100%;
-    max-width: 700px;
+    max-width: 500px;
     text-align: center;
-    padding: 12px 16px;
+    padding: clamp(6px, 2.4vw, 12px) clamp(10px, 3.2vw, 16px);
     background: rgba(255,255,255,0.08);
     color: var(--color-text);
-    font-size: 0.95rem;
+    font-size: clamp(0.8rem, 3.04vw, 0.95rem);
     border-radius: 8px;
-    margin: 8px auto;
+    margin: clamp(4px, 1.6vw, 8px) auto;
 }
 
 .waiting-message.hidden {
@@ -1227,14 +1166,14 @@ body {
 
 .spectator-bar {
     width: 100%;
-    max-width: 700px;
+    max-width: 500px;
     text-align: center;
-    padding: 6px 12px;
+    padding: clamp(3px, 1.2vw, 6px) clamp(8px, 2.4vw, 12px);
     background: rgba(59, 130, 246, 0.15);
     color: var(--color-text);
-    font-size: 0.85rem;
+    font-size: clamp(0.75rem, 2.72vw, 0.85rem);
     border-radius: 6px;
-    margin: 4px auto;
+    margin: clamp(2px, 0.8vw, 4px) auto;
 }
 
 .spectator-bar.hidden {
@@ -1255,16 +1194,60 @@ body {
 }
 
 /* ===========================
-   多人游戏 - 左右布局
+   多人游戏 - 对抗模式 Grid 布局
    =========================== */
-body.multiplayer-active #game {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: center;
-    max-width: 700px;
-    gap: 8px;
-    padding: 0 8px;
+/* 对抗模式：Grid 布局，对手左侧 + 棋盘右侧 + 键盘底部 */
+body.multiplayer-active:not(.coop-mode) {
+    --tile-size: min(clamp(28px, 12vw, 62px), max(28px, calc((100vh - 350px) / 8)));
+    --tile-size: min(clamp(28px, 12vw, 62px), max(28px, calc((100dvh - 350px) / 8)));
+    --tile-font-size: calc(var(--tile-size) * 0.52);
+}
+
+body.multiplayer-active:not(.coop-mode) #game {
+    display: grid;
+    grid-template-columns: clamp(90px, 20vw, 130px) 1fr;
+    grid-template-rows: 1fr auto;
+    max-width: 500px;
+    gap: 0;
+    padding: 0 clamp(4px, 1vw, 8px);
+}
+
+body.multiplayer-active:not(.coop-mode) .opponents-container {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    justify-content: space-evenly;
+    overflow-y: auto;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: none;
+    padding: clamp(6px, 1.5vw, 12px) clamp(3px, 0.8vw, 6px);
+}
+
+body.multiplayer-active:not(.coop-mode) .opponent-card {
+    width: 100%;
+    min-width: 0;
+}
+
+body.multiplayer-active:not(.coop-mode) .opponent-nickname {
+    max-width: 100%;
+}
+
+body.multiplayer-active:not(.coop-mode) #board-container {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    justify-self: center;
+    min-height: 0;
+    overflow: hidden;
+    padding: clamp(6px, 1.5vw, 12px) 0;
+}
+
+body.multiplayer-active:not(.coop-mode) #keyboard {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-width: none;
 }
 
 /* 合作模式：居中布局（和单机一样），无对手面板 */
@@ -1289,19 +1272,9 @@ body.coop-mode.multiplayer-active #keyboard {
     flex-basis: auto;
 }
 
-body.multiplayer-active #board-container {
-    flex-shrink: 0;
-    flex-grow: 0;
-}
-
-body.multiplayer-active #keyboard {
-    flex-basis: 100%;
-    margin: 0 auto;
-}
-
 body.multiplayer-active #message-container {
     position: fixed;
-    top: 70px;
+    top: clamp(50px, 14vw, 70px);
     left: 50%;
     transform: translateX(-50%);
     z-index: 100;
@@ -1314,13 +1287,13 @@ body.multiplayer-active #message-container {
 .opponents-container {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 6px 4px;
-    min-width: 80px;
-    max-width: 140px;
+    gap: clamp(4px, 1.15vw, 8px);
+    padding: clamp(3px, 0.86vw, 6px) clamp(2px, 0.58vw, 4px);
+    min-width: clamp(50px, 11.5vw, 80px);
+    max-width: clamp(60px, 20vw, 140px);
     max-height: calc(100vh - 200px);
+    max-height: calc(100dvh - 200px);
     overflow-y: auto;
-    order: -1;    /* 确保在左侧 */
 }
 
 .opponents-container.hidden {
@@ -1331,12 +1304,12 @@ body.multiplayer-active #message-container {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 3px;
-    padding: 4px;
+    gap: clamp(2px, 0.43vw, 3px);
+    padding: clamp(2px, 0.58vw, 4px);
     border: 1px solid var(--color-header-border);
     border-radius: 6px;
     background: var(--color-bg);
-    min-width: 60px;
+    min-width: clamp(40px, 8.6vw, 60px);
     transition: border-color 0.2s;
 }
 
@@ -1355,9 +1328,9 @@ body.multiplayer-active #message-container {
 }
 
 .opponent-nickname {
-    font-size: 0.65rem;
+    font-size: clamp(0.5rem, 1.49vw, 0.65rem);
     font-weight: 700;
-    max-width: 70px;
+    max-width: clamp(40px, 10vw, 70px);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1375,8 +1348,8 @@ body.multiplayer-active #message-container {
 }
 
 .opponent-tile {
-    width: 10px;
-    height: 10px;
+    width: clamp(6px, 1.43vw, 10px);
+    height: clamp(6px, 1.43vw, 10px);
     border: 1px solid var(--color-tile-border);
     border-radius: 1px;
     font-size: 5px;
@@ -1407,7 +1380,7 @@ body.multiplayer-active #message-container {
 }
 
 .opponent-status {
-    font-size: 0.6rem;
+    font-size: clamp(0.45rem, 1.37vw, 0.6rem);
     color: var(--color-absent);
 }
 
@@ -1428,10 +1401,10 @@ body.multiplayer-active #message-container {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.75rem;
+    font-size: clamp(0.55rem, 1.72vw, 0.75rem);
     white-space: nowrap;
     font-weight: 700;
-    max-width: 60px;
+    max-width: clamp(40px, 8.6vw, 60px);
     overflow: hidden;
     text-overflow: ellipsis;
     pointer-events: none;
@@ -1473,11 +1446,11 @@ body.multiplayer-active #message-container {
 .play-again-content {
     background: var(--color-bg);
     color: var(--color-text);
-    padding: 32px 40px;
+    padding: clamp(20px, 6.4vw, 32px) clamp(16px, 8vw, 40px);
     border-radius: 12px;
     text-align: center;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    min-width: 240px;
+    min-width: clamp(200px, 48vw, 240px);
 }
 
 .play-again-answer {
@@ -1500,15 +1473,15 @@ body.multiplayer-active #message-container {
 }
 
 .play-again-action-btn {
-    padding: 12px 28px;
-    font-size: 1rem;
+    padding: clamp(8px, 2.4vw, 12px) clamp(14px, 5.6vw, 28px);
+    font-size: clamp(0.85rem, 3.2vw, 1rem);
     font-weight: 700;
     border: none;
     border-radius: 6px;
     cursor: pointer;
     font-family: inherit;
     transition: opacity 0.2s;
-    min-width: 120px;
+    min-width: clamp(90px, 24vw, 120px);
     text-align: center;
 }
 
@@ -1541,38 +1514,6 @@ body.multiplayer-active #message-container {
     margin-top: 10px;
     font-size: 0.85rem;
     color: var(--color-absent);
-}
-
-/* ===========================
-   多人游戏响应式
-   =========================== */
-@media (max-width: 600px) {
-    body.multiplayer-active #game {
-        gap: 4px;
-    }
-    .opponents-container {
-        min-width: 55px;
-        max-width: 80px;
-    }
-    .opponent-tile {
-        width: 8px;
-        height: 8px;
-    }
-    .coop-guesser-tag {
-        font-size: 0.6rem;
-        max-width: 50px;
-    }
-}
-
-@media (max-width: 400px) {
-    .opponents-container {
-        min-width: 50px;
-        max-width: 70px;
-    }
-    .opponent-tile {
-        width: 7px;
-        height: 7px;
-    }
 }
 
 /* 多人模式下 solver 面板不遮挡棋盘 */

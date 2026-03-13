@@ -11,8 +11,11 @@
  * - 观众 (spectators): 无上限，只能观战
  */
 
+const crypto = require('crypto');
+
 const rooms = new Map();
 const disconnectedPlayers = new Map();
+const sessionTokens = new Map();  // token -> { roomId, socketId }
 const DISCONNECT_TIMEOUT = 60000;
 const MAX_SEATS = 4;
 
@@ -37,6 +40,13 @@ function createPlayerData(nickname) {
     };
 }
 
+/** 生成会话令牌 */
+function generateSessionToken(roomId, socketId) {
+    const token = crypto.randomBytes(16).toString('hex');
+    sessionTokens.set(token, { roomId, socketId });
+    return token;
+}
+
 // ─── 公开 API ─────────────────────────────────────
 
 function createRoom(hostSocketId, nickname, wordLength, answer, mode) {
@@ -54,6 +64,7 @@ function createRoom(hostSocketId, nickname, wordLength, answer, mode) {
         wordLength,
         answer: answer.toUpperCase(),
         mode,
+        hardMode: false,
         hostId: hostSocketId,
         gameStarted: false,
         players: new Map(),       // 选手席
@@ -70,7 +81,8 @@ function createRoom(hostSocketId, nickname, wordLength, answer, mode) {
     room.history.set(hostSocketId, []);
 
     rooms.set(id, room);
-    return { ok: true, room };
+    const token = generateSessionToken(id, hostSocketId);
+    return { ok: true, room, token };
 }
 
 function joinRoom(roomId, socketId, nickname) {
@@ -96,10 +108,12 @@ function joinRoom(roomId, socketId, nickname) {
     if (!room.gameStarted && room.players.size < MAX_SEATS) {
         room.players.set(socketId, createPlayerData(nickname));
         room.history.set(socketId, []);
-        return { ok: true, room, role: 'player' };
+        const token = generateSessionToken(roomId, socketId);
+        return { ok: true, room, role: 'player', token };
     } else {
         room.spectators.set(socketId, { nickname, disconnected: false });
-        return { ok: true, room, role: 'spectator' };
+        const token = generateSessionToken(roomId, socketId);
+        return { ok: true, room, role: 'spectator', token };
     }
 }
 
@@ -219,6 +233,38 @@ function findRoomBySocket(socketId) {
 function getRole(room, socketId) {
     if (room.players.has(socketId)) return 'player';
     if (room.spectators.has(socketId)) return 'spectator';
+    return null;
+}
+
+/** 设置房间 Hard Mode */
+function setHardMode(roomId, socketId, enabled) {
+    const room = rooms.get(roomId);
+    if (!room) return { ok: false, error: '房间不存在' };
+    if (room.hostId !== socketId) return { ok: false, error: '只有房主可以修改 Hard Mode' };
+    room.hardMode = !!enabled;
+    return { ok: true };
+}
+
+/**
+ * 根据历史猜测记录检查 Hard Mode 约束
+ * @param {Array} history - [{guess, evaluation}]
+ * @param {string} newGuess - 新提交的猜测
+ * @returns {string|null} 错误信息，null 表示通过
+ */
+function checkHardMode(history, newGuess) {
+    for (const { guess, evaluation } of history) {
+        for (let i = 0; i < guess.length; i++) {
+            if (evaluation[i] === 'correct') {
+                if (newGuess[i] !== guess[i]) {
+                    return `第 ${i + 1} 个字母必须是 ${guess[i]}`;
+                }
+            } else if (evaluation[i] === 'present') {
+                if (!newGuess.includes(guess[i])) {
+                    return `猜测中必须包含字母 ${guess[i]}`;
+                }
+            }
+        }
+    }
     return null;
 }
 
@@ -388,7 +434,8 @@ function serializeRoom(room) {
         coopHistory: room.coopHistory,
         roundOver: room.roundOver,
         roundAnswer: room.roundAnswer,
-        playAgainVotes: room.playAgainVotes.size
+        playAgainVotes: room.playAgainVotes.size,
+        hardMode: room.hardMode
     };
 }
 
@@ -439,23 +486,39 @@ function disconnectPlayer(roomId, socketId, onTimeout) {
     return { ok: true, nickname, role: isPlayer ? 'player' : 'spectator' };
 }
 
-function rejoinRoom(roomId, newSocketId, nickname) {
+function rejoinRoom(roomId, newSocketId, nickname, token) {
     const room = rooms.get(roomId);
     if (!room) return { ok: false, error: '房间不存在' };
 
     let oldSocketId = null;
     let role = null;
 
-    // 先在选手席中查找
-    for (const [sid, player] of room.players) {
-        if (player.nickname === nickname && player.disconnected) {
-            oldSocketId = sid;
-            role = 'player';
-            break;
+    // 优先使用 token 匹配
+    if (token) {
+        const tokenData = sessionTokens.get(token);
+        if (tokenData && tokenData.roomId === roomId) {
+            oldSocketId = tokenData.socketId;
+            if (room.players.has(oldSocketId) && room.players.get(oldSocketId).disconnected) {
+                role = 'player';
+            } else if (room.spectators.has(oldSocketId) && room.spectators.get(oldSocketId).disconnected) {
+                role = 'spectator';
+            } else {
+                oldSocketId = null; // token 对应的用户不在断线状态
+            }
         }
     }
 
-    // 再在观众席中查找
+    // 回退到昵称匹配（向后兼容）
+    if (!oldSocketId) {
+        for (const [sid, player] of room.players) {
+            if (player.nickname === nickname && player.disconnected) {
+                oldSocketId = sid;
+                role = 'player';
+                break;
+            }
+        }
+    }
+
     if (!oldSocketId) {
         for (const [sid, spec] of room.spectators) {
             if (spec.nickname === nickname && spec.disconnected) {
@@ -497,12 +560,16 @@ function rejoinRoom(roomId, newSocketId, nickname) {
 
     if (room.hostId === oldSocketId) room.hostId = newSocketId;
 
-    return { ok: true, room, oldSocketId, role };
+    // 更新 token 映射并生成新 token
+    if (token) sessionTokens.delete(token);
+    const newToken = generateSessionToken(roomId, newSocketId);
+
+    return { ok: true, room, oldSocketId, role, token: newToken };
 }
 
 module.exports = {
     createRoom, joinRoom, leaveRoom, getRoom, findRoomBySocket, getRole,
-    startGame, joinSeat, leaveSeat,
+    startGame, joinSeat, leaveSeat, setHardMode, checkHardMode,
     recordGuess, recordCoopGuess, checkVersusRoundOver,
     votePlayAgain, resetRound, getPlayAgainStatus,
     serializeRoom, disconnectPlayer, rejoinRoom,

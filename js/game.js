@@ -23,6 +23,23 @@ let isCustomWord = false;    // 当前是否为自定义单词模式
 let isMultiplayer = false;   // 多人模式标志
 
 // ===========================
+// 多人模式钩子（解耦 game ↔ multiplayer）
+// multiplayer.js 通过 GameAPI.hooks 注册回调
+// ===========================
+const _mpHooks = {
+    broadcastBox: null,       // () => void
+    submitGuess: null,        // (guess) => void
+    updateSettingsUI: null,   // () => void
+    leaveRoom: null,          // () => void
+    setHardMode: null,        // (enabled) => void
+    startCustomWord: null,    // (word) => void
+    isSpectator: () => false,
+    isGameStarted: () => true,
+    getRoomId: () => null,
+    getMode: () => null,
+};
+
+// ===========================
 // DOM 元素引用
 // ===========================
 const boardEl = document.getElementById('board');
@@ -74,7 +91,6 @@ function initGame() {
     // 首次启动：随机选词
     targetWord = getRandomWord();
     isCustomWord = false;
-    console.log('🎯 [Debug] 答案:', targetWord);
 
     // 初始化游戏状态
     resetGameState();
@@ -136,7 +152,6 @@ function restartGame(customWord) {
         targetWord = getRandomWord();
         isCustomWord = false;
     }
-    console.log('🎯 [Debug] 答案:', targetWord);
 
     resetGameState();
     createBoard();
@@ -235,8 +250,8 @@ function getRow(row) {
 function handleLetter(letter) {
     if (gameOver || isRevealing) return;
     // 观众/游戏未开始 → 禁止输入
-    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
-        if (Multiplayer.isSpectator || !Multiplayer.gameStarted) return;
+    if (isMultiplayer) {
+        if (_mpHooks.isSpectator() || !_mpHooks.isGameStarted()) return;
     }
     if (currentCol >= wordLength) return;
 
@@ -247,16 +262,16 @@ function handleLetter(letter) {
     currentCol++;
 
     // 多人模式：广播候选框
-    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
-        Multiplayer.broadcastBox();
+    if (isMultiplayer && _mpHooks.broadcastBox) {
+        _mpHooks.broadcastBox();
     }
 }
 
 /** 删除最后一个字母 */
 function handleBackspace() {
     if (gameOver || isRevealing) return;
-    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
-        if (Multiplayer.isSpectator || !Multiplayer.gameStarted) return;
+    if (isMultiplayer) {
+        if (_mpHooks.isSpectator() || !_mpHooks.isGameStarted()) return;
     }
     if (currentCol <= 0) return;
 
@@ -267,16 +282,16 @@ function handleBackspace() {
     boardState[currentRow][currentCol] = '';
 
     // 多人模式：广播候选框
-    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
-        Multiplayer.broadcastBox();
+    if (isMultiplayer && _mpHooks.broadcastBox) {
+        _mpHooks.broadcastBox();
     }
 }
 
 /** 提交猜测 */
 function handleEnter() {
     if (gameOver || isRevealing) return;
-    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
-        if (Multiplayer.isSpectator || !Multiplayer.gameStarted) return;
+    if (isMultiplayer) {
+        if (_mpHooks.isSpectator() || !_mpHooks.isGameStarted()) return;
     }
 
     // 检查是否填满5个字母
@@ -306,9 +321,9 @@ function handleEnter() {
     }
 
     // ★ 多人模式：发送到服务器，由服务器评估
-    if (isMultiplayer && typeof Multiplayer !== 'undefined') {
+    if (isMultiplayer && _mpHooks.submitGuess) {
         isRevealing = true; // 锁定输入，防止重复提交
-        Multiplayer.submitGuess(guess);
+        _mpHooks.submitGuess(guess);
         return;
     }
 
@@ -567,8 +582,8 @@ function bindModalEvents() {
     });
 
     settingsBtn.addEventListener('click', () => {
-        if (typeof Multiplayer !== 'undefined' && Multiplayer.updateSettingsUI) {
-            Multiplayer.updateSettingsUI();
+        if (_mpHooks.updateSettingsUI) {
+            _mpHooks.updateSettingsUI();
         }
         settingsModal.classList.remove('hidden');
     });
@@ -581,8 +596,8 @@ function bindModalEvents() {
 
     // 重新开始按钮
     restartBtn.addEventListener('click', () => {
-        if (isMultiplayer && typeof Multiplayer !== 'undefined') {
-            Multiplayer.leaveRoom();
+        if (isMultiplayer && _mpHooks.leaveRoom) {
+            _mpHooks.leaveRoom();
             return;
         }
         restartGame();
@@ -612,6 +627,9 @@ function bindSettings() {
         }
         hardMode = toggleHard.checked;
         localStorage.setItem('wordle-hard-mode', hardMode ? 'true' : 'false');
+        if (isMultiplayer && _mpHooks.setHardMode) {
+            _mpHooks.setHardMode(hardMode);
+        }
     });
 
     // Custom Word
@@ -672,8 +690,8 @@ function startCustomWord() {
     customWordInput.value = '';
 
     // 多人合作模式：发送自定义单词到服务器开始游戏
-    if (isMultiplayer && typeof Multiplayer !== 'undefined' && Multiplayer.roomId && Multiplayer.mode === 'coop') {
-        Multiplayer.startCustomWord(word);
+    if (isMultiplayer && _mpHooks.startCustomWord && _mpHooks.getRoomId() && _mpHooks.getMode() === 'coop') {
+        _mpHooks.startCustomWord(word);
         return;
     }
 
@@ -1290,6 +1308,47 @@ function bindScreenshot() {
         });
     }
 }
+
+// ===========================
+// GameAPI：game.js 的公共接口
+// multiplayer.js 通过此接口访问游戏状态和功能
+// ===========================
+const GameAPI = {
+    // --- 状态访问器 ---
+    get currentRow() { return currentRow; },
+    set currentRow(v) { currentRow = v; },
+    get currentCol() { return currentCol; },
+    set currentCol(v) { currentCol = v; },
+    get gameOver() { return gameOver; },
+    set gameOver(v) { gameOver = v; },
+    get wordLength() { return wordLength; },
+    get hardMode() { return hardMode; },
+    set hardMode(v) { hardMode = v; },
+    get isRevealing() { return isRevealing; },
+    set isRevealing(v) { isRevealing = v; },
+    get isMultiplayer() { return isMultiplayer; },
+    set isMultiplayer(v) { isMultiplayer = v; },
+    get boardState() { return boardState; },
+    get revealedHints() { return revealedHints; },
+
+    clearTarget() { targetWord = ''; },
+
+    // --- 游戏操作 ---
+    resetGameState,
+    createBoard,
+    resetKeyboard,
+    getTile,
+    showMessage,
+    changeWordLength,
+    restartGame,
+    applyGuessResult,
+    updateKeyboard,
+    updateSolverAfterGuess,
+    recordGameResult,
+
+    // --- 多人模式钩子注册 ---
+    hooks: _mpHooks,
+};
 
 // ===========================
 // 启动游戏

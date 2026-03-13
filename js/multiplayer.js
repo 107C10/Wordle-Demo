@@ -97,9 +97,9 @@ const Multiplayer = (function () {
         });
 
         function syncWordLengthUI() {
-            selectedWordLength = wordLength;
+            selectedWordLength = GameAPI.wordLength;
             roomWordLengthBtns.forEach(b => {
-                b.classList.toggle('active', parseInt(b.dataset.length) === wordLength);
+                b.classList.toggle('active', parseInt(b.dataset.length) === GameAPI.wordLength);
             });
         }
 
@@ -162,7 +162,7 @@ const Multiplayer = (function () {
         if (roomRoleToggle) {
             roomRoleToggle.addEventListener('click', () => {
                 if (!currentRoomId || !socket) return;
-                if (roomGameStarted && !gameOver) {
+                if (roomGameStarted && !GameAPI.gameOver) {
                     showMessage('游戏进行中，无法切换身份', 2000);
                     return;
                 }
@@ -280,7 +280,8 @@ const Multiplayer = (function () {
                 console.log('[MP] 尝试重连房间:', currentRoomId);
                 socket.emit('rejoin-room', {
                     roomId: currentRoomId,
-                    nickname: myNickname
+                    nickname: myNickname,
+                    token: localStorage.getItem('wordle-session-token') || undefined
                 });
             }
         });
@@ -323,25 +324,28 @@ const Multiplayer = (function () {
         socket.on('round-over', onRoundOver);
         socket.on('play-again-vote', onPlayAgainVote);
         socket.on('new-round', onNewRound);
+        socket.on('hard-mode-changed', onHardModeChanged);
     }
 
     // ─── 房间事件处理 ─────────────────────────────
 
-    function onRoomCreated({ roomId, state, role }) {
+    function onRoomCreated({ roomId, state, role, token }) {
         myRole = role || 'player';
+        if (token) localStorage.setItem('wordle-session-token', token);
         enterRoom(roomId, state);
         showMessage(`房间已创建: ${roomId}`, 3000);
     }
 
-    function onRoomJoined({ roomId, state, role }) {
+    function onRoomJoined({ roomId, state, role, token }) {
         myRole = role || 'player';
+        if (token) localStorage.setItem('wordle-session-token', token);
         enterRoom(roomId, state);
         const roleText = myRole === 'spectator' ? '（观众）' : '';
         showMessage(`已加入房间 ${roomId} ${roleText}`, 2000);
     }
 
     function onRoomError({ message }) {
-        isRevealing = false;
+        GameAPI.isRevealing = false;
         showMessage(message || '房间操作失败', 3000);
     }
 
@@ -429,8 +433,8 @@ const Multiplayer = (function () {
             resetGameState();
             createBoard();
             resetKeyboard();
-            targetWord = '';
-            gameOver = false;
+            GameAPI.clearTarget();
+            GameAPI.gameOver = false;
 
             // 合作模式：恢复共享棋盘
             if (roomMode === 'coop' && state.coopHistory && state.coopHistory.length > 0) {
@@ -438,8 +442,8 @@ const Multiplayer = (function () {
                     const { guess, evaluation, nickname: guesser } = state.coopHistory[r];
                     applyCoopRow(r, guess, evaluation, guesser);
                 }
-                currentRow = state.coopHistory.length;
-                currentCol = 0;
+                GameAPI.currentRow = state.coopHistory.length;
+                GameAPI.currentCol = 0;
             }
 
             // 重建对手面板（coop 模式会跳过）
@@ -454,8 +458,8 @@ const Multiplayer = (function () {
             resetGameState();
             createBoard();
             resetKeyboard();
-            targetWord = '';
-            gameOver = false;
+            GameAPI.clearTarget();
+            GameAPI.gameOver = false;
 
             if (roomMode === 'coop') {
                 // 合作模式观众：恢复共享棋盘
@@ -464,8 +468,8 @@ const Multiplayer = (function () {
                         const { guess, evaluation, nickname: guesser } = state.coopHistory[r];
                         applyCoopRow(r, guess, evaluation, guesser);
                     }
-                    currentRow = state.coopHistory.length;
-                    currentCol = 0;
+                    GameAPI.currentRow = state.coopHistory.length;
+                    GameAPI.currentCol = 0;
                 }
             } else {
                 // 对抗模式观众：进入观战模式
@@ -506,24 +510,25 @@ const Multiplayer = (function () {
         updatePlayerCount();
     }
 
-    function onRoomRejoined({ roomId, state, myHistory, role }) {
+    function onRoomRejoined({ roomId, state, myHistory, role, token }) {
         showMessage('已重连到房间', 2000);
+        if (token) localStorage.setItem('wordle-session-token', token);
 
         currentRoomId = roomId;
         roomWordLength = state.wordLength;
         roomMode = state.mode || 'versus';
         roomGameStarted = state.gameStarted;
         myRole = role || 'player';
-        isMultiplayer = true;
+        GameAPI.isMultiplayer = true;
 
-        if (wordLength !== roomWordLength) {
+        if (GameAPI.wordLength !== roomWordLength) {
             changeWordLength(roomWordLength);
         } else {
             resetGameState();
             createBoard();
             resetKeyboard();
         }
-        targetWord = '';
+        GameAPI.clearTarget();
 
         if (myRole === 'player') {
             // 选手：恢复自己的棋盘
@@ -533,8 +538,8 @@ const Multiplayer = (function () {
                         const { guess, evaluation, nickname: guesser } = state.coopHistory[r];
                         applyCoopRow(r, guess, evaluation, guesser);
                     }
-                    currentRow = state.coopHistory.length;
-                    currentCol = 0;
+                    GameAPI.currentRow = state.coopHistory.length;
+                    GameAPI.currentCol = 0;
                 }
             } else {
                 if (myHistory && myHistory.length > 0) {
@@ -544,16 +549,16 @@ const Multiplayer = (function () {
                             const tile = getTile(r, c);
                             tile.textContent = guess[c];
                             tile.setAttribute('data-state', evaluation[c]);
-                            boardState[r][c] = guess[c];
+                            GameAPI.boardState[r][c] = guess[c];
                         }
                         updateKeyboard(guess, evaluation);
                     }
-                    currentRow = myHistory.length;
-                    currentCol = 0;
+                    GameAPI.currentRow = myHistory.length;
+                    GameAPI.currentCol = 0;
 
                     const lastEval = myHistory[myHistory.length - 1].evaluation;
                     if (lastEval.every(e => e === 'correct') || myHistory.length >= 6) {
-                        gameOver = true;
+                        GameAPI.gameOver = true;
                     }
                 }
             }
@@ -566,8 +571,8 @@ const Multiplayer = (function () {
                         const { guess, evaluation, nickname: guesser } = state.coopHistory[r];
                         applyCoopRow(r, guess, evaluation, guesser);
                     }
-                    currentRow = state.coopHistory.length;
-                    currentCol = 0;
+                    GameAPI.currentRow = state.coopHistory.length;
+                    GameAPI.currentCol = 0;
                 }
             } else {
                 // 对抗模式观众：恢复观战视角
@@ -611,10 +616,11 @@ const Multiplayer = (function () {
         myRole = 'player';
         roomGameStarted = false;
         myHostId = null;
-        isMultiplayer = false;
+        GameAPI.isMultiplayer = false;
         spectatorTarget = null;
         playerHistories = {};
         coopPlayerCount = 0;
+        localStorage.removeItem('wordle-session-token');
 
         roomInfo.classList.add('hidden');
         opponentsContainer.classList.add('hidden');
@@ -635,16 +641,23 @@ const Multiplayer = (function () {
         roomWordLength = state.wordLength;
         roomMode = state.mode || 'versus';
         roomGameStarted = state.gameStarted;
-        isMultiplayer = true;
+        GameAPI.isMultiplayer = true;
+
+        // 同步服务器 Hard Mode 状态
+        if (state.hardMode !== undefined) {
+            const toggleHard = document.getElementById('toggle-hard');
+            if (toggleHard) toggleHard.checked = state.hardMode;
+            GameAPI.hardMode = state.hardMode;
+        }
 
         roomModal.classList.add('hidden');
 
-        if (wordLength !== roomWordLength) {
+        if (GameAPI.wordLength !== roomWordLength) {
             changeWordLength(roomWordLength);
         } else {
             restartGame();
         }
-        targetWord = '';
+        GameAPI.clearTarget();
 
         setHostState(state);
         showRoomUI(roomId, state);
@@ -663,8 +676,8 @@ const Multiplayer = (function () {
                     const { guess, evaluation, nickname: guesser } = state.coopHistory[r];
                     applyCoopRow(r, guess, evaluation, guesser);
                 }
-                currentRow = state.coopHistory.length;
-                currentCol = 0;
+                GameAPI.currentRow = state.coopHistory.length;
+                GameAPI.currentCol = 0;
             }
         } else {
             document.body.classList.remove('coop-mode');
@@ -684,7 +697,7 @@ const Multiplayer = (function () {
 
         // 本轮已结束 → 显示 play again
         if (state.roundOver) {
-            gameOver = true;
+            GameAPI.gameOver = true;
             showPlayAgainUI(state.roundAnswer);
         }
     }
@@ -859,7 +872,7 @@ const Multiplayer = (function () {
         resetGameState();
         createBoard();
         resetKeyboard();
-        gameOver = false;
+        GameAPI.gameOver = false;
 
         // 从 playerHistories 或 state.history 恢复
         const hist = playerHistories[targetId];
@@ -870,12 +883,12 @@ const Multiplayer = (function () {
                     const tile = getTile(r, c);
                     tile.textContent = guess[c];
                     tile.setAttribute('data-state', evaluation[c]);
-                    boardState[r][c] = guess[c];
+                    GameAPI.boardState[r][c] = guess[c];
                 }
                 updateKeyboard(guess, evaluation);
             }
-            currentRow = hist.guesses.length;
-            currentCol = 0;
+            GameAPI.currentRow = hist.guesses.length;
+            GameAPI.currentCol = 0;
         }
     }
 
@@ -992,11 +1005,11 @@ const Multiplayer = (function () {
                     if (candidateRow[c] && candidateRow[c] !== '*') {
                         t.textContent = candidateRow[c];
                         t.setAttribute('data-state', 'tbd');
-                        boardState[row][c] = candidateRow[c];
+                        GameAPI.boardState[row][c] = candidateRow[c];
                     } else {
                         t.textContent = '';
                         t.removeAttribute('data-state');
-                        boardState[row][c] = '';
+                        GameAPI.boardState[row][c] = '';
                     }
                 }
             }
@@ -1044,11 +1057,11 @@ const Multiplayer = (function () {
                 if (!tile) continue;
                 tile.textContent = guess[c];
                 tile.setAttribute('data-state', evaluation[c]);
-                boardState[row][c] = guess[c];
+                GameAPI.boardState[row][c] = guess[c];
             }
             updateKeyboard(guess, evaluation);
-            currentRow = row + 1;
-            currentCol = 0;
+            GameAPI.currentRow = row + 1;
+            GameAPI.currentCol = 0;
 
             // 更新 solver
             if (typeof updateSolverAfterGuess === 'function') {
@@ -1078,7 +1091,7 @@ const Multiplayer = (function () {
 
     function onGuessResult({ evaluation, won, gameOver: go, answer }) {
         applyGuessResult(
-            boardState[currentRow].join(''),
+            GameAPI.boardState[GameAPI.currentRow].join(''),
             evaluation,
             won,
             go && !won ? answer : undefined
@@ -1097,14 +1110,14 @@ const Multiplayer = (function () {
         }
 
         if (won) {
-            isRevealing = false;
-            gameOver = true;
+            GameAPI.isRevealing = false;
+            GameAPI.gameOver = true;
         } else if (roundOver) {
-            isRevealing = false;
-            gameOver = true;
+            GameAPI.isRevealing = false;
+            GameAPI.gameOver = true;
             if (answer) showMessage(`答案: ${answer}`, 5000);
         } else {
-            isRevealing = false;
+            GameAPI.isRevealing = false;
         }
     }
 
@@ -1114,11 +1127,11 @@ const Multiplayer = (function () {
             if (!tile) continue;
             tile.textContent = guess[c];
             tile.setAttribute('data-state', evaluation[c]);
-            boardState[row][c] = guess[c];
+            GameAPI.boardState[row][c] = guess[c];
         }
         updateKeyboard(guess, evaluation);
-        currentRow = row + 1;
-        currentCol = 0;
+        GameAPI.currentRow = row + 1;
+        GameAPI.currentCol = 0;
 
         const boardRow = boardEl.children[row];
         if (boardRow) {
@@ -1142,8 +1155,8 @@ const Multiplayer = (function () {
     // ─── 全局结束 & 再来一局 ──────────────────────
 
     function onRoundOver({ won, answer, mode, players, seatCount, maxSeats }) {
-        gameOver = true;
-        isRevealing = false;
+        GameAPI.gameOver = true;
+        GameAPI.isRevealing = false;
         lastSeatCount = seatCount;
         lastMaxSeats = maxSeats;
 
@@ -1152,7 +1165,7 @@ const Multiplayer = (function () {
                 const myInfo = players[socket.id];
                 if (myInfo) {
                     if (myInfo.won) {
-                        recordGameResult(true, currentRow + 1, true);
+                        recordGameResult(true, GameAPI.currentRow + 1, true);
                     } else {
                         recordGameResult(false, 0, true);
                     }
@@ -1174,7 +1187,7 @@ const Multiplayer = (function () {
                 const myInfo = players[socket.id];
                 if (myInfo) {
                     if (myInfo.won) {
-                        recordGameResult(true, currentRow, true);
+                        recordGameResult(true, GameAPI.currentRow, true);
                     } else {
                         recordGameResult(false, 0, true);
                     }
@@ -1210,9 +1223,9 @@ const Multiplayer = (function () {
         resetGameState();
         createBoard();
         resetKeyboard();
-        targetWord = '';
-        gameOver = false;
-        isRevealing = false;
+        GameAPI.clearTarget();
+        GameAPI.gameOver = false;
+        GameAPI.isRevealing = false;
 
         // 重建对手面板（coop 模式会跳过）
         rebuildOpponents(state);
@@ -1270,8 +1283,8 @@ const Multiplayer = (function () {
         if (!socket || !currentRoomId || myRole !== 'player' || !roomGameStarted) return;
         socket.emit('update-box', {
             roomId: currentRoomId,
-            row: currentRow,
-            candidateRow: boardState[currentRow]
+            row: GameAPI.currentRow,
+            candidateRow: GameAPI.boardState[GameAPI.currentRow]
         });
     }
 
@@ -1342,15 +1355,38 @@ const Multiplayer = (function () {
         }
     }
 
+    function setHardMode(enabled) {
+        if (!socket || !currentRoomId) return;
+        socket.emit('set-hard-mode', { roomId: currentRoomId, enabled });
+    }
+
+    function onHardModeChanged({ enabled }) {
+        GameAPI.hardMode = enabled;
+        const toggleHard = document.getElementById('toggle-hard');
+        if (toggleHard) toggleHard.checked = enabled;
+    }
+
     // ─── 启动 ─────────────────────────────────────
     init();
 
+    // ─── 注册多人模式钩子到 GameAPI ──────────────
+    if (typeof GameAPI !== 'undefined') {
+        const h = GameAPI.hooks;
+        h.broadcastBox = broadcastBox;
+        h.submitGuess = submitGuess;
+        h.updateSettingsUI = updateSettingsUI;
+        h.leaveRoom = leaveRoom;
+        h.setHardMode = setHardMode;
+        h.startCustomWord = startCustomWord;
+        h.isSpectator = () => myRole === 'spectator';
+        h.isGameStarted = () => roomGameStarted;
+        h.getRoomId = () => currentRoomId;
+        h.getMode = () => roomMode;
+    }
+
     return {
-        broadcastBox,
-        submitGuess,
         leaveRoom,
         updateSettingsUI,
-        startCustomWord,
         get roomId() { return currentRoomId; },
         get connected() { return socket && socket.connected; },
         get mode() { return roomMode; },
